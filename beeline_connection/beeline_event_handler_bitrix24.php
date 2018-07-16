@@ -4,7 +4,7 @@ use Bitrix\Main\Loader;
 Loader::includeModule("highloadblock");
 use Bitrix\Highloadblock\HighloadBlockTable as HLBT;
 /**
- * Парсит события звонков (входящий/исходящий, звонок принят, звонок завершён и различные редиректы).
+ * Парсит события звонков (входящий/исходящий, звонок принят, звонок завершён а так же различные редиректы).
  * И направляет их в Bitrix24
  *
  * @author Чижик Константин
