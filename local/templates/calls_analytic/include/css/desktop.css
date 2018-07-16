@@ -1,0 +1,61 @@
+.desktop-panel {
+  height: 550px;
+  padding: 20px;
+  overflow: hidden;
+}
+.very-big-message {
+  font-size: 50px;
+  text-align: center;
+  padding: 30px 0px;
+}
+.very-big-message p {
+  display: inline-block;
+}
+.desktop-panel .clarification-cont {
+  margin-left: 0px;
+}
+.success-calls .desktop-panel {
+  overflow: auto;
+  height: 600px;
+}
+.ajax-loader-cont {
+  width: 100%;
+  margin-top: 260px;
+  text-align: center;
+}
+.ajax-loader-gif {
+  display: inline-block;
+}
+#curve_chart {
+  margin-top: 20px;
+}
+#curve_chart svg>g>rect {
+  fill: none;
+}
+.unsuccess_calls {
+  background: #FF7373;
+  color: #FFFFFF;
+}
+#donutchart svg>rect {
+  fill: none;
+}
+#donutchart svg>g>text {
+  font-weight: normal;
+  font-size: 14px;
+  color: inherit;
+}
+.text-common, .text-success, .text-warning {
+  font-size: 25px;
+}
+#columnchart_values {
+  margin-left: -100px;
+  margin-top: -12px;
+  z-index: 0;
+}
+#columnchart_values svg>rect {
+  fill: none;
+}
+.requests_table td {
+  background-color: #ab65fd;
+  color: #FFFFFF;
+}

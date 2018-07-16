@@ -1,0 +1,25 @@
+.common_analytic {
+  padding-top: 50px;
+}
+body .multicall-panel {
+  overflow: hidden;
+}
+.text-common, .text-success, .text-warning {
+  font-size: 30px;
+}
+.text-common, .text-success, .text-warning, thead th:not(:first-child), .multicall-panel th:not(:first-child) {
+  text-align: center;
+}
+body .worker-table {
+  height: 210px;
+  padding: 0px 0px;
+}
+.worker-table thead tr {
+  height: 55px;
+}
+.worker-table th {
+  font-size: 10px;
+}
+.worker-table .min {
+  font-size: 12px;
+}

@@ -1,0 +1,12 @@
+#columnchart_values {
+  margin-left: -80px;
+  margin-top: -20px;
+  margin-right: -100px;
+}
+#columnchart_values svg>rect {
+  fill: none;
+}
+#success_calls_link {
+  z-index: 10000;
+  position: relative;
+}

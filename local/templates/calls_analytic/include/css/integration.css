@@ -1,0 +1,29 @@
+body .integration-cont>h3 {
+  display: block;
+  margin: 0px 0px 30px 0px;
+}
+body .integration-block {
+  padding: 0px;
+}
+.integration-block h5 {
+  display: inline-block;
+  position: relative;
+  padding-top: 10px;
+  margin: 0px 0px 15px 10px;
+}
+.integration-block:hover {
+  box-shadow: 3px 3px 10px 1px;
+}
+.integration-block>a {
+  display: block;
+  height: 100%;
+  width: 100%;
+  color: #333333;
+  padding: 10px 20px;
+}
+.integration-block>a:hover {
+  color: #333333;
+}
+.integration-block>a>p{
+  color: #3c3c3c;;
+}

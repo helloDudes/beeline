@@ -1,0 +1,72 @@
+.excel-download {
+  display: block;
+  float: right;
+  color: #000000;
+  margin-top: 10px;
+}
+.table-filter>.number>input {
+  width: 100px;
+}
+.success_icon {
+  text-align: center;
+}
+.recording-cont>a {
+  display: block;
+  text-align: center;
+}
+.recording-cont .player-block-cont {
+  display: none;
+  position: relative;
+  z-index: 100;
+  margin-left: -300px;
+  margin-top: -50px;
+  height: 50px;
+  top: 20px;
+  right: 15px;
+}
+.recording-cont .glyphicon-phone-alt {
+  color: #3e3e3e;
+}
+.player-time {
+  float: right;
+  display: inline-block;
+  color: #FFFFFF;
+  padding-top: 3px;
+}
+.simple-player-container {
+    display: inline-block;
+    -webkit-border-radius: 5px;
+    -moz-border-radius: 5px;
+    border-radius: 0px;
+    box-shadow: 0px 0px 3px;
+    height: 35px;
+    width: 280px;
+    padding-top: 10px;
+}
+.simple-player-container > div > ul {
+
+    margin: 0;
+    padding-left: 0;
+}
+.simpleplayer-play-control {
+    background-image: url('images/play.png');
+    display: block;
+    width: 16px;
+    height: 16px;
+    bottom: -5px;
+    position: relative;
+}
+.simpleplayer-play-control:hover {
+    background-image: url('images/playing.png');
+}
+.simpleplayer-stop-control {
+    background-image: url('images/stop.png');
+    display: block;
+    width: 16px;
+    height: 16px;
+    bottom: -5px;
+    position: relative;
+}
+.simpleplayer-stop-control:hover {
+    background-image: url('images/stoped.png');
+}

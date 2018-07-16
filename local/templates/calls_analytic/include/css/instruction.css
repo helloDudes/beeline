@@ -1,0 +1,8 @@
+.instruction-img-cont {
+  width: 100%;
+}
+.instruction-img-cont>img {
+  border-radius: 5px;
+  width: 100%;
+  border: 1px solid #878787;
+}

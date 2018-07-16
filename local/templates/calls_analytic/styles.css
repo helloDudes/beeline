@@ -1,0 +1,267 @@
+body {
+  min-width: 540px;
+}
+body .label-info {
+  border-color: #FBC91D;
+}
+body .bx-pagination .bx-pagination-container ul li span {
+  background: #3e3e3e;
+  color: #ededed;
+}
+body .bx-pagination .bx-pagination-container ul li.bx-active>span {
+  background: #FBC91D;
+}
+.clearfix:after {
+  content: ".";
+  display: block;
+  clear: both;
+  visibility: hidden;
+  line-height: 0;
+  height: 0;
+}
+.ATC-logo {
+  margin: 5px 20px;
+  height: 35px;
+}
+.media-heading {
+  padding-top: 5px;
+}
+.select-form-auth {
+  display: none;
+  position: fixed;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  left: 0px;
+  top: 0px;
+  text-align: center;
+}
+.select-form-auth .login-form {
+  display: inline-block;
+  margin: 150px 0px;
+  position: relative;
+  width: 350px;
+}
+.select-form-auth .panel {
+  border-radius: 10px;
+}
+body .login-form {
+  background: #000000;
+  border-color: #000;
+  box-shadow: 0px 5px 10px 1px #000000;
+  z-index: 10;
+  width: 400px;
+}
+.modal-dialog {
+  width: 400px;
+}
+.login-form input {
+  font-size: 14px;
+}
+.select-form-auth .content-group, .modal-dialog .content-group{
+  color: #FFFFFF;
+}
+.select-form-auth .content-group small, .modal-dialog .content-group small {
+  color: #b9b9b9;
+}
+body .modal-content {
+  color: #FFFFFF;
+  border-radius: 10px;
+}
+.modal-dialog .form-group button[type="submit"] {
+  background: #fbc91d;
+  color: #1B1B1B;
+}
+.select-form-auth  .content-group button, .modal-dialog .form-group button {
+  color: #000000;
+}
+.modal {
+  text-align: center;
+}
+body .modal-dialog {
+  display: inline-block;
+  margin-top: 150px;
+}
+body .modal-dialog .content-divider > span {
+  background-color: #000000;
+}
+.modal-dialog .red-border {
+  border: 2px solid #E12525;
+}
+.modal-dialog .warning-message {
+  margin-bottom: 10px;
+  color: #FF2020;
+}
+.come_in_button, .come_in_button:hover, .come_in_button:active, .come_in_button:focus {
+  font-size: 18px;
+}
+.full-panel {
+  padding: 30px;
+  overflow: auto;
+}
+.full-panel h3 {
+  display: inline;
+}
+.clarification-cont {
+  display: inline-block;
+  margin-left: 30px;
+}
+.clarification, .clarification:hover {
+  color: #000000;
+}
+.clarification-cont .glyphicon-question-sign {
+  font-size: 20px;
+}
+.clarification-popup-cont {
+  display: none;
+  position: absolute;
+  margin-top: -40px;
+  margin-left: 47px;
+  z-index: 5000;
+  opacity: 0.9;
+}
+.clarification-popup {
+  border-radius: 10px;
+  background: #161616;
+  color: #e5e5e5;
+  padding: 10px;
+}
+.clarification-popup:before {
+  content: "";
+  width: 0;
+  height: 0;
+  right: 100%;
+  top: 12px;
+  position: absolute;
+  border-top: 13px solid transparent;
+  border-right: 26px solid #161616;
+  border-bottom: 13px solid transparent;
+}
+.clarification-popup p {
+  font-size: 12px;
+}
+.no-data {
+  height: 100%;
+  width: 100%;
+  display:table;
+}
+.no-data>p {
+  display:table-cell;
+  vertical-align: middle;
+  font-size: 30px;
+  text-align: center;
+}
+.table-filter {
+  padding-left: 2px;
+}
+.table-filter a:hover {
+  color: #000000;
+  text-shadow: 0px 0px 3px #FFFFFF;
+}
+.table-filter>div {
+  display: inline-block;
+  margin-right: 10px;
+  margin-top: 10px;
+}
+.table-filter>div>p {
+  margin-bottom: 0px;
+}
+.table-filter>div>select, .table-filter>div>input {
+  height: 20px;
+  border-radius: 3px;
+  border: 1px solid #d1cfcf;
+}
+.table-filter>div>select, .table-filter>div>.client-number {
+  min-width: 140px;
+  max-width: 200px;
+  height: 25px;
+}
+.table-filter>input[type="submit"] {
+  margin: 20px 0px;
+}
+.table-filter>.data>input{
+  width: 20px;
+}
+.table-filter>.data>input:last-child{
+  width: 40px;
+}
+.table-filter>.data>input::-webkit-outer-spin-button,
+.table-filter>.data>input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+}
+.table-filter>.data>input {
+  -moz-appearance: textfield;
+}
+.table-filter .checkbox-cont {
+  display: none;
+  position: absolute;
+  background-color: #FFFFFF;
+  border: 2px solid #b3b3b3;
+  border-radius: 5px;
+  padding: 10px;
+  z-index: 100;
+  margin-top: 10px;
+}
+.table-filter .checkbox-cont>p>label>input {
+  margin-right: 10px;
+}
+.table-filter .workers-select {
+  display: inline-block;
+  width: 100px;
+  background-color: #eaeaea;
+  border-radius: 3px;
+  padding: 3px 5px;
+  color: #000000;
+}
+.table-filter .workers-select>span {
+  float: right;
+  font-size: 10px;
+  margin-top: 5px;
+}
+.table-filter .worker-searcher {
+  display: none;
+  width: 0px;
+}
+.table-filter .calendar-title {
+  background: #1e88e5;
+  border-radius: 5px;
+  margin-bottom: -8px;
+}
+.table-filter .calendar-button {
+  display: block;
+  float: left;
+  width: 200px;
+  background-color: #eaeaea;
+  border-radius: 3px;
+  padding: 3px 5px;
+  color: #000000;
+}
+.table-filter .calendar-button .glyphicon {
+  display: block;
+  float: right;
+  padding: 2px;
+}
+.table-filter .calendar-accept {
+  display: block;
+  float: left;
+  width: 0px;
+  color: #FFFFFF;
+  overflow: hidden;
+}
+.table-filter .calendar-accept:hover {
+  color: #FFFFFF;
+}
+.table-filter .calendar-accept span {
+  display: block;
+  padding-top: 3px;
+  margin-left: 10px;
+}
+.table-filter .calendar-cont {
+  display: none;
+  position: absolute;
+  margin-top: 30px;
+  z-index: 110;
+}
+.table-filter #calendar {
+  width: 300px;
+}
