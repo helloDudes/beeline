@@ -11,7 +11,7 @@ if (!check_bitrix_sessid())
 if ($ex = $APPLICATION->GetException()) {
     echo CAdminMessage::ShowMessage(array(
         "TYPE" => "ERROR",
-        "MESSAGE" => "Ошибка"),
+        "MESSAGE" => "Ошибка",
         "DETAILS" => $ex->GetString(),
         "HTML" => true,
     ));

@@ -26,14 +26,23 @@ class kostya14_custom extends CModule
         $this->SHOW_SUPER_ADMIN_GROUP_RIGHTS='Y';
         $this->MODULE_GROUP_RIGHTS = "Y";
     }
+    public function isVersionD7()
+    {
+        return CheckVersion(\Bitrix\Main\ModuleManager::getVersion('main'), '14.00.00');
+    }
+    public function GetPath($notDocumentRoot=false)
+    {
+        if($notDocumentRoot)
+            return str_ireplace(Application::getDocumentRoot(),'',dirname(__DIR__));
+        else
+            return dirname(__DIR__);
+    }
     function DoInstall() {
         global $APPLICATION;
         if($this->isVersionD7())
         {
             if(ModuleManager::isModuleInstalled('highloadblock')) {
                 ModuleManager::registerModule($this->MODULE_ID);
-
-                $this->InstallFiles();
             }
             else {
                 $APPLICATION->ThrowException("Сначала установите модуль highloadblock");
@@ -43,11 +52,10 @@ class kostya14_custom extends CModule
         {
             $APPLICATION->ThrowException("Ваша версия Bitrix слишком сильно устарела для данного модуля");
         }
-        $APPLICATION->IncludeAdminFile(Loc::getMessage("ACADEMY_D7_INSTALL_TITLE"), $this->GetPath()."/install/step.php");
+        $APPLICATION->IncludeAdminFile("Установка вспомогательного модуля", $this->GetPath()."/install/step.php");
     }
     function DoUninstall() {
         ModuleManager::unRegisterModule($this->MODULE_ID);
-        $this->UninstallFiles();
     }
 }
 
