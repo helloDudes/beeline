@@ -49,12 +49,6 @@ class kostya14_custom extends CModule
         ModuleManager::unRegisterModule($this->MODULE_ID);
         $this->UninstallFiles();
     }
-    function InstallFiles() {
-
-    }
-    function UninstallFiles() {
-
-    }
 }
 
 ?>
