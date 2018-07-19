@@ -1,8 +1,0 @@
-#donutchart svg>rect {
-  fill: none;
-}
-#donutchart svg>g>text {
-  font-weight: normal;
-  font-size: 14px;
-  color: inherit;
-}
