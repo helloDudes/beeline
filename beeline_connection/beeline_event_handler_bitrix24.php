@@ -1,8 +1,7 @@
 <?
 require($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/main/include/prolog_before.php");
-use Bitrix\Main\Loader;
-Loader::includeModule("highloadblock");
-use Bitrix\Highloadblock\HighloadBlockTable as HLBT;
+\Bitrix\Main\Loader::includeModule("highloadblock");
+use \Bitrix\Highloadblock\HighloadBlockTable as HLBT;
 /**
  * Парсит события звонков (входящий/исходящий, звонок принят, звонок завершён а так же различные редиректы).
  * И направляет их в Bitrix24
@@ -43,7 +42,7 @@ class BeelineEventHandlerBitrix24
     $user = self::GetUserData($arATEData["ate_key"], $arEvent["targetId"]);
 
     if(!$user)
-      return false;
+      return;
 
     //Формируем массив опций для регистрации звонка
     $arOptions["USER_ID"] = $user["UF_CRM_USER_ID"];
@@ -100,7 +99,7 @@ class BeelineEventHandlerBitrix24
   static function CallCreate($arEvent, $arATEData) {
     $user = self::GetUserData($arATEData["ate_key"], $arEvent["targetId"]);
     if(!$user)
-      return false;
+      return;
 
     //Собираем данные из прошлых событий звонка для обращений к Bitrix24
     $entity_data_class = self::GetEntityDataClass(BITRIX24_EVENTS_HL_BLOCK_ID);
@@ -267,9 +266,10 @@ class BeelineEventHandlerBitrix24
   * При событии разрушения подписки, если оно происходит по текущему id подписки (subscribtionid), то
   * оформляем подписку заново
   *
-  * @param string $subscriptionId id подписки
+  * @param string $token токен Билайн
+  * @param int $id сущности подписки на интеграцию
   */
-  static function Repair($subscriptionId, $token, $id) {
+  static function Repair($token, $id) {
     $url = "https://cloudpbx.beeline.ru/apis/portal/subscription";
     $ch = curl_init();
     curl_setopt($ch, CURLOPT_URL, $url );
@@ -782,7 +782,7 @@ class BeelineEventHandlerBitrix24
     }
     //Если сломалась действующая подписка, чиним
     if($arEvent["event"]=="SubscriptionTerminatedEvent") {
-      self::Repair($arEvent["subscriptionId"], $arATEData["beeline_token"], $arATEData["ate_id"]);
+      self::Repair($arATEData["beeline_token"], $arATEData["ate_id"]);
     };
   }
 }

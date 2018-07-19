@@ -8,7 +8,7 @@
  */
 
 \Bitrix\Main\Loader::includeModule('highloadblock');
-use Bitrix\Highloadblock\HighloadBlockTable as HLBT;
+use \Bitrix\Highloadblock\HighloadBlockTable as HLBT;
 
 class classCallsListB extends CBitrixComponent
 {
