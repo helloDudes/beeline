@@ -9,28 +9,13 @@
  * @author Чижик Константин
  * @copyright 2018 ООО DMM
  */
-\Bitrix\Main\Loader::includeModule('highloadblock');
-use Bitrix\Highloadblock\HighloadBlockTable as HLBT;
-use Bitrix\Main\Entity;
+\Bitrix\Main\Loader::includeModule('kostya14.custom');
+use \Kostya14\Custom\DbInteraction;
+use \Kostya14\Custom\Filter;
+use \Bitrix\Main\Entity;
 
 class classCommonStatisticB extends CBitrixComponent
 {
-  /**
-  * Получает класс сущности highloadblock для дальнейшей работы с таблицей
-  *
-  * @param int $HlBlockId highloadblock id
-  * @return object $entity_data_class сущность
-  */
-  function GetEntityDataClass($HlBlockId) {
-      if (empty($HlBlockId) || $HlBlockId < 1)
-      {
-          return false;
-      }
-      $hlblock = HLBT::getById($HlBlockId)->fetch();
-      $entity = HLBT::compileEntity($hlblock);
-      $entity_data_class = $entity->getDataClass();
-      return $entity_data_class;
-  }
   /**
   * Получает список сотрудников
   *
@@ -39,7 +24,7 @@ class classCommonStatisticB extends CBitrixComponent
   * @return array $arWorkerNumbers массив номеров сотрудников
   */
   function GetWorkers(&$arResult, $user_login) {
-    $entity_data_class = $this->GetEntityDataClass(WORKERS_HL_BLOCK_ID);
+    $entity_data_class = DbInteraction::GetEntityDataClass(WORKERS_HL_BLOCK_ID);
     $rsData = $entity_data_class::getList(array(
        'select' => array('ID', 'UF_PHONE_NUMBER', 'UF_FIRST_NAME', 'UF_LAST_NAME'),
        'filter' => array('UF_USER_PHONE_NUMBER'=>$user_login),
@@ -60,38 +45,6 @@ class classCommonStatisticB extends CBitrixComponent
     return $arWorkerNumbers;
   }
   /**
-   * Фильтрует по дате
-   *
-   * @param array $filter массив фильтров
-   * @param string $date_from дата от, в формате dd.mm.YYYY
-   * @param string $date_to дата до
-   */
-  function CheckData(&$filter, $date_from, $date_to) {
-    if(!empty($date_from))
-      $filter[">=UF_CALL_CREATE_DATE"]=$date_from." 00:00:00";
-    if(!empty($date_to))
-      $filter["<=UF_CALL_CREATE_DATE"]=$date_to." 23:59:59";
-    if(empty($date_from) && empty($date_to))
-      $filter[">=UF_CALL_CREATE_DATE"] = date("d.m.Y", time()-(86400*30))." 00:00:00";
-  }
-  /**
-  * Отбирает из всех сотрудников только выбранных в фильтре
-  *
-  * @param array $arWorkerNumbers массив телефонов сотрудников
-  * @param array $arForm массив всех параметров фильтра
-  */
-  function CheckWorkers(&$arWorkerNumbers, $arForm) {
-    if($arForm["workers_all"]!="Y" && count($arForm)!=0) {
-      $true_numbers = array();
-      foreach ($arForm as $number => $value) {
-        if(in_array($number, $arWorkerNumbers) && $value=="Y") {
-          $true_numbers[]=strval($number);
-        }
-      }
-      $arWorkerNumbers = $true_numbers;
-    }
-  }
-  /**
   * Получает таблицу для общей статистики:
   *            Все            Входящие          Исходящие
   * Всего      ["total"]      ["total_in"]      ["total_out"]
@@ -102,10 +55,10 @@ class classCommonStatisticB extends CBitrixComponent
   * @param array $arWorkerNumbers массив телефонов сотрудников
   */
   function GetCalls(&$arResult, $arWorkerNumbers) {
-    $entity_data_class = $this->GetEntityDataClass(CALLS_HL_BLOCK_ID);
+    $entity_data_class = DbInteraction::GetEntityDataClass(CALLS_HL_BLOCK_ID);
 
     //Используем фильтры
-    $this->CheckWorkers($arWorkerNumbers, $_GET);
+    Filter::CheckWorkers($arWorkerNumbers, $_GET);
     $filter = array(
         array(
             "LOGIC"=>"AND",
@@ -113,7 +66,7 @@ class classCommonStatisticB extends CBitrixComponent
             array('!UF_ABONENT_NUMBER'=>false)
         )
     );
-    $this->CheckData($filter, $_GET["date_from"], $_GET["date_to"]);
+    Filter::CheckData($filter, $_GET["date_from"], $_GET["date_to"]);
 
     //Создаём массив параметров для запроса
     $get_list_params = array(
@@ -168,10 +121,10 @@ class classCommonStatisticB extends CBitrixComponent
   * @param array $arWorkerNumbers массив телефонов сотрудников
   */
   function GetMulticallNumbers(&$arResult, $arWorkerNumbers) {
-    $entity_data_class = $this->GetEntityDataClass(CALLS_HL_BLOCK_ID);
+    $entity_data_class = DbInteraction::GetEntityDataClass(CALLS_HL_BLOCK_ID);
 
     //Проверяем фильтры
-    $this->CheckWorkers($arWorkerNumbers, $_GET);
+    Filter::CheckWorkers($arWorkerNumbers, $_GET);
     $filter = array(
         array(
             "LOGIC"=>"AND",
@@ -179,7 +132,7 @@ class classCommonStatisticB extends CBitrixComponent
             array('!UF_ABONENT_NUMBER'=>false)
         )
     );
-    $this->CheckData($filter, $_GET["date_from"], $_GET["date_to"]);
+    Filter::CheckData($filter, $_GET["date_from"], $_GET["date_to"]);
 
     //Формируем параметры для запроса
     $get_list_params = array(
@@ -229,12 +182,12 @@ class classCommonStatisticB extends CBitrixComponent
    */
   function GetWorkerStat(&$arResult, $arWorkerNumbers) {
     $arResult["WORKER_STAT"]=array();
-    $entity_data_class = $this->GetEntityDataClass(CALLS_HL_BLOCK_ID);
+    $entity_data_class = DbInteraction::GetEntityDataClass(CALLS_HL_BLOCK_ID);
 
     //Проверяем фильтры
-    $this->CheckWorkers($arWorkerNumbers, $_GET);
+    Filter::CheckWorkers($arWorkerNumbers, $_GET);
     $filter = array();
-    $this->CheckData($filter, $_GET["date_from"], $_GET["date_to"]);
+    Filter::CheckData($filter, $_GET["date_from"], $_GET["date_to"]);
 
     //Выполняем для каждго сотрудика
     foreach ($arResult["WORKERS"] as $number => $worker) {
@@ -294,7 +247,6 @@ class classCommonStatisticB extends CBitrixComponent
     $user_login = $USER->GetLogin();
     if($this->startResultCache(false,  array($user_login, $_GET)))
     {
-      $entity_data_class = $this->GetEntityDataClass(CALLS_HL_BLOCK_ID);
       $arWorkerNumbers = $this->GetWorkers($this->arResult, $user_login);
       if($arWorkerNumbers) {
         $this->GetCalls($this->arResult, $arWorkerNumbers);

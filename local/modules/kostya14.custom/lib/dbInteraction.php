@@ -84,7 +84,7 @@ class DbInteraction
         //Если ключ доступа истёк, то берём новый и обновляем полученные в ответе данные
         if($expires <= time()) {
             try {
-                $arATE = externalApi::GetNewB24Access($el["ID"], $el["UF_REFRESH_TOKEN"]);
+                $arATE = ExternalApi::GetNewB24Access($el["ID"], $el["UF_REFRESH_TOKEN"]);
             }
             catch (\Exception $e) {
                 \CEventLog::Add(array(
@@ -101,7 +101,9 @@ class DbInteraction
         $arReturn = array();
         $arReturn["ate_id"] = $el["ID"];
         $arReturn["ate_key"] = $el["UF_KEY"];
+        $arReturn["ate_limit"] = $el["UF_LIMIT"];
         $arReturn["beeline_token"] = $el["UF_BEELINE_TOKEN"];
+        $arReturn["subscribe_expires"] = $el["UF_SUBSCRIBE_EXPIRES"];
         $arReturn["bitrix24_token"] = $arAnswer["UF_ACCESS_TOKEN"];
         $arReturn["domain"] = $el["UF_PORTAL"];
         $arReturn["create_redirect"] = $el["UF_CREATE_REDIRECT"];

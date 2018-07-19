@@ -7,40 +7,15 @@
  * @copyright 2018 ООО DMM
  */
 
-\Bitrix\Main\Loader::includeModule('highloadblock');
-use \Bitrix\Highloadblock\HighloadBlockTable as HLBT;
+\Bitrix\Main\Loader::includeModule('kostya14.custom');
+use \Kostya14\Custom\DbInteraction;
+use \Kostya14\Custom\ExternalApi;
+use \Kostya14\Custom\Filter;
 
 class classCallsListB extends CBitrixComponent
 {
   const NAV_NAME = 'nav-calls'; //Имя $_GET параметра постраничной навигации
   const PAGE_SIZE = 7;
-  /**
-  * Получает класс сущности highloadblock для дальнейшей работы с таблицей
-  *
-  * @param int $HlBlockId highloadblock id
-  * @return object $entity_data_class сущность
-  */
-  function GetEntityDataClass($HlBlockId) {
-      if (empty($HlBlockId) || $HlBlockId < 1)
-      {
-          return false;
-      }
-      $hlblock = HLBT::getById($HlBlockId)->fetch();
-      $entity = HLBT::compileEntity($hlblock);
-      $entity_data_class = $entity->getDataClass();
-      return $entity_data_class;
-  }
-  /**
-  * Получает данные пользователя
-  *
-  * @param int $user_id
-  * @return array $arUser массив со всеми параметрами пользователя
-  */
-  function getUser($user_id) {
-    $rsUser = CUser::GetByID($user_id);
-    $arUser = $rsUser->Fetch();
-    return $arUser;
-  }
   /**
   * Добавляет к фильтру звонков его направление, если задан $direct
   *
@@ -56,25 +31,6 @@ class classCallsListB extends CBitrixComponent
     };
   }
   /**
-  * Отбирает из всех сотрудников только выбранных в фильтре
-  *
-  * @param array $arWorkerNumbers массив телефонов сотрудников
-  * @param array $arForm массив всех параметров фильтра
-  * @param string $page_name имя параметра, который не следует учитывать
-  */
-  function CheckWorkers(&$arWorkerNumbers, $arForm, $page_name) {
-    unset($arForm[$page_name]);
-    if($arForm["workers_all"]!="Y" && count($arForm)!=0) {
-      $true_numbers = array();
-      foreach ($arForm as $number => $value) {
-        if(in_array($number, $arWorkerNumbers) && $value=="Y") {
-          $true_numbers[]=strval($number);
-        }
-      }
-      $arWorkerNumbers = $true_numbers;
-    }
-  }
-  /**
   * Фильтрует только отвеченные или неотвеченные звонки
   *
   * @param array $filter массив фильтров
@@ -87,21 +43,6 @@ class classCallsListB extends CBitrixComponent
     if($is_answered=="no") {
       $filter["UF_IS_ANSWERED"]=false;
     };
-  }
-  /**
-  * Фильтрует по дате
-  *
-  * @param array $filter массив фильтров
-  * @param string $date_from дата от, в формате dd.mm.YYYY
-  * @param string $date_to дата до
-  */
-  function CheckData(&$filter, $date_from, $date_to) {
-    if(!empty($date_from))
-      $filter[">=UF_CALL_CREATE_DATE"]=$date_from." 00:00:00";
-    if(!empty($date_to))
-      $filter["<=UF_CALL_CREATE_DATE"]=$date_to." 23:59:59";
-    if(empty($date_from) && empty($date_to))
-      $filter[">=UF_CALL_CREATE_DATE"] = date("d.m.Y", time()-(86400*30))." 00:00:00";
   }
   /**
   * Фильтрует по номеру клиента
@@ -121,7 +62,7 @@ class classCallsListB extends CBitrixComponent
   * @return array $arWorkerNumbers массив номеров сотрудников
   */
   function GetWorkers(&$arResult, $user_login) {
-    $entity_data_class = $this->GetEntityDataClass(WORKERS_HL_BLOCK_ID);
+    $entity_data_class = DbInteraction::GetEntityDataClass(WORKERS_HL_BLOCK_ID);
     $rsData = $entity_data_class::getList(array(
        'select' => array('ID', 'UF_PHONE_NUMBER', 'UF_FIRST_NAME', 'UF_LAST_NAME',),
        'filter' => array('UF_USER_PHONE_NUMBER'=>$user_login),
@@ -149,10 +90,10 @@ class classCallsListB extends CBitrixComponent
   * @param array $arWorkerNumbers массив номеров сотрудников
   */
   function GetCalls(&$arResult, $arWorkerNumbers) {
-    $entity_data_class = $this->GetEntityDataClass(CALLS_HL_BLOCK_ID);
+    $entity_data_class = DbInteraction::GetEntityDataClass(CALLS_HL_BLOCK_ID);
 
     //Проверка фильтров
-    $this->CheckWorkers($arWorkerNumbers, $_GET, self::NAV_NAME);
+    Filter::CheckWorkers($arWorkerNumbers, $_GET, self::NAV_NAME);
     $filter = array(
         array(
             "LOGIC"=>"AND",
@@ -163,7 +104,7 @@ class classCallsListB extends CBitrixComponent
     );
     $this->CheckDirection($filter, $_GET["direction"]);
     $this->CheckAnswer($filter, $_GET["is_answered"]);
-    $this->CheckData($filter, $_GET["date_from"], $_GET["date_to"]);
+    Filter::CheckData($filter, $_GET["date_from"], $_GET["date_to"]);
     $this->CheckClient($filter, $_GET["client_number"]);
     
     //Задаём постраничную навигацию
@@ -213,37 +154,19 @@ class classCallsListB extends CBitrixComponent
         };
         $arResult["CALLS"][$el["ID"]]["EXT_TRACKING_ID"] = $el["UF_EXT_TRACKING_ID"];
         $arResult["CALLS"][$el["ID"]]["MULTICALL_NUMBER"] = $el["UF_MULTICALL_NUMBER"];
-    }
-  }
-  /**
-  * Получает ссылку на запись каждого звонка
-  *
-  * @param array $arResult
-  */
-  function GetDownloadLink(&$arResult) {
-    foreach ($arResult["CALLS"] as $key => $value) {
-      if($arResult["CALLS"][$key]["EXT_TRACKING_ID"] && $arResult["CALLS"][$key]["SUCCESS"]) {
-        $ch = curl_init();
-
-        curl_setopt($ch, CURLOPT_URL, "https://cloudpbx.beeline.ru/apis/portal/records/".urlencode($arResult["CALLS"][$key]["EXT_TRACKING_ID"])."/".urlencode($arResult["CALLS"][$key]["WORKER_PHONE_NUMBER"]."@mpbx.sip.beeline.ru")."/reference");
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "GET");
-
-        $headers = array();
-        $headers[] = "X-Mpbx-Api-Auth-Token: ".$arResult["USER"]["UF_TOKEN"];
-        curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-
-        $result = json_decode(curl_exec($ch), true);
-        curl_close ($ch);
-        $arResult["CALLS"][$key]["DOWNLOAD_LINK"]=$result["url"];
-	     }
+        $arResult["CALLS"][$el["ID"]]["DOWNLOAD_LINK"] = ExternalApi::GetRecordURL(
+            $el["UF_EXT_TRACKING_ID"],
+            $el["UF_ABONENT_NUMBER"]."@mpbx.sip.beeline.ru",
+            $arResult["USER"]["UF_TOKEN"],
+            RECORD_WAITING_TIME
+        );
     }
   }
   public function executeComponent() {
     global $USER;
     if(!$USER->IsAuthorized()) return;
     $user_id=$USER->GetID();
-    $this->arResult["USER"] = $this->getUser($user_id);
+    $this->arResult["USER"] = DbInteraction::getUser($user_id);
     if($this->startResultCache(false, array($this->arResult["USER"]["LOGIN"], $_GET)))
     {
       $arWorkerNumbers = $this->GetWorkers($this->arResult, $this->arResult["USER"]["LOGIN"]);

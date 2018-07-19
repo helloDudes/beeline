@@ -9,7 +9,7 @@
 
 namespace Kostya14\Custom;
 
-class externalApi
+class ExternalApi
 {
     const BEELINE_URL = "https://cloudpbx.beeline.ru/apis/portal/";
 
@@ -23,7 +23,7 @@ class externalApi
      * @param boolean $is_json устанавливать ли заголовок Content-Type: application/json
      * @return array $arAnswer данные ответа Билайн
      */
-    public static function BeelineCommand($url, $token, $type = "GET", $arOptions = array(), $is_json = false) {
+    public static function BeelineCommand($url, $token, $type = "GET", $arOptions = array()) {
         if(empty($url) || empty($token)){
             return false;
         }
@@ -37,11 +37,9 @@ class externalApi
         $headers = array();
         $headers[] = "X-Mpbx-Api-Auth-Token: ".$token;
 
-        if($is_json) {
-            $headers[] = "Content-Type: application/json";
-        }
 
         if(!empty($arOptions)) {
+            $headers[] = "Content-Type: application/json";
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($arOptions));
         }
 

@@ -5,28 +5,13 @@
  * @author Чижик Константин
  * @copyright 2018 ООО DMM
  */
-\Bitrix\Main\Loader::includeModule('highloadblock');
-use Bitrix\Highloadblock\HighloadBlockTable as HLBT;
-use Bitrix\Main\Entity;
+\Bitrix\Main\Loader::includeModule('kostya14.custom');
+use \Kostya14\Custom\DbInteraction;
+use \Kostya14\Custom\Filter;
+use \Bitrix\Main\Entity;
 
 class classCallsScheduleB extends CBitrixComponent
 {
-  /**
-  * Получает класс сущности highloadblock для дальнейшей работы с таблицей
-  *
-  * @param int $HlBlockId highloadblock id
-  * @return object $entity_data_class сущность
-  */
-  function GetEntityDataClass($HlBlockId) {
-      if (empty($HlBlockId) || $HlBlockId < 1)
-      {
-          return false;
-      }
-      $hlblock = HLBT::getById($HlBlockId)->fetch();
-      $entity = HLBT::compileEntity($hlblock);
-      $entity_data_class = $entity->getDataClass();
-      return $entity_data_class;
-  }
   /**
   * Получает список сотрудников
   *
@@ -35,7 +20,7 @@ class classCallsScheduleB extends CBitrixComponent
   * @return array $arWorkerNumbers массив номеров сотрудников
   */
   function GetWorkers(&$arResult, $user_login) {
-    $entity_data_class = $this->GetEntityDataClass(WORKERS_HL_BLOCK_ID);
+    $entity_data_class = DbInteraction::GetEntityDataClass(WORKERS_HL_BLOCK_ID);
     $rsData = $entity_data_class::getList(array(
        'select' => array('ID', 'UF_PHONE_NUMBER', 'UF_FIRST_NAME', 'UF_LAST_NAME'),
        'filter' => array('UF_USER_PHONE_NUMBER'=>$user_login),
@@ -117,23 +102,6 @@ class classCallsScheduleB extends CBitrixComponent
     return $str;
   }
   /**
-  * Отбирает из всех сотрудников только выбранных в фильтре
-  *
-  * @param array $arWorkerNumbers массив телефонов сотрудников
-  * @param array $arForm массив всех параметров фильтра
-  */
-  function CheckWorkers(&$arWorkerNumbers, $arForm) {
-    if($arForm["workers_all"]!="Y" && count($arForm)!=0) {
-      $true_numbers = array();
-      foreach ($arForm as $number => $value) {
-        if(in_array($number, $arWorkerNumbers) && $value=="Y") {
-          $true_numbers[]=strval($number);
-        }
-      }
-      $arWorkerNumbers = $true_numbers;
-    }
-  }
-  /**
   * Фильтрует только отвеченные или неотвеченные звонки
   *
   * @param string $is_answered отвечен/неотвечен
@@ -175,7 +143,7 @@ class classCallsScheduleB extends CBitrixComponent
     };
 
     //Проверяем остальные фильтры
-    $this->CheckWorkers($arWorkerNumbers, $_GET);
+    Filter::CheckWorkers($arWorkerNumbers, $_GET);
     $workers = "('".implode("', '", $arWorkerNumbers)."')";
     $direction = $this->CheckDirection($_GET["direction"]);
     $answered = $this->CheckAnswer($_GET["is_answered"]);

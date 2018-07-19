@@ -9,39 +9,14 @@
  * @copyright 2018 ООО DMM
  */
 
-\Bitrix\Main\Loader::includeModule('highloadblock');
-use Bitrix\Highloadblock\HighloadBlockTable as HLBT;
-use Bitrix\Main\Config\Option;
+\Bitrix\Main\Loader::includeModule('kostya14.custom');
+use \Kostya14\Custom\DbInteraction;
+use \Kostya14\Custom\ExternalApi;
+use \Kostya14\Custom\Filter;
+use \Bitrix\Main\Config\Option;
 
 class classUserSettingsBitrix24 extends CBitrixComponent
 {
-  /**
-  * Получает класс сущности highloadblock для дальнейшей работы с таблицей
-  *
-  * @param int $HlBlockId highloadblock id
-  * @return object $entity_data_class сущность
-  */
-  function GetEntityDataClass($HlBlockId) {
-      if (empty($HlBlockId) || $HlBlockId < 1)
-      {
-          return false;
-      }
-      $hlblock = HLBT::getById($HlBlockId)->fetch();
-      $entity = HLBT::compileEntity($hlblock);
-      $entity_data_class = $entity->getDataClass();
-      return $entity_data_class;
-  }
-  /**
-  * Получает данные пользователя
-  *
-  * @param int $user_id
-  * @return array $arUser массив с данными юзера
-  */
-  function getUser($user_id) {
-    $rsUser = CUser::GetByID($user_id);
-    $arUser = $rsUser->Fetch();
-    return $arUser;
-  }
   /**
   * Получает массив сотрудников, связанных с введёным токеном
   *
@@ -49,75 +24,11 @@ class classUserSettingsBitrix24 extends CBitrixComponent
   * @return array $arWorkers массив сотрудников с их данными
   */
   function GetWorkers($token) {
-    $url = "https://cloudpbx.beeline.ru/apis/portal/abonents";
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url );
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, array(
-      'X-MPBX-API-AUTH-TOKEN: '.$token
-    ));
-    $output = curl_exec($ch);
-    curl_close($ch);
-    $arWorkers = json_decode($output, true);
-    CEventLog::Add(array(
-       "AUDIT_TYPE_ID" => "BITRIX24_BEELINE_W",
-       "MODULE_ID" => "main",
-       "DESCRIPTION" => "token: ".$token." output: ".$output,
-    ));
+    $arWorkers = ExternalApi::BeelineCommand("abonents/", $token, "GET", array());
+
     if(!isset($arWorkers["errorCode"]) && count($arWorkers)>0)
       return $arWorkers;
     return false;
-  }
-  /**
-   * Посылает какую либо команду в Bitrix24
-   *
-   * @param array $domain домен Bitrix24
-   * @param string $method метод REST API
-   * @param array $arOptions набор опций
-   * @param string $token токен Bitrix24
-   * @return array $arOutput ответ Bitrix24
-   */
-  function RestCommand($domain, $method, $arOptions, $token) {
-    $queryUrl  = 'https://'.$domain.'/rest/'.$method;
-    $queryData = http_build_query(array_merge($arOptions, array('auth' => $token)));
-    $curl = curl_init();
-    curl_setopt_array($curl, array(
-        CURLOPT_SSL_VERIFYPEER => 0,
-        CURLOPT_POST           => 1,
-        CURLOPT_HEADER         => 0,
-        CURLOPT_RETURNTRANSFER => 1,
-        CURLOPT_URL            => $queryUrl,
-        CURLOPT_POSTFIELDS     => $queryData,
-        CURLOPT_VERBOSE        => 1,
-    ));
-    $output = curl_exec($curl);
-    curl_close($curl);
-    $arOutput = json_decode($output, true);
-    CEventLog::Add(array(
-       "AUDIT_TYPE_ID" => "BITRIX24_METHOD",
-       "MODULE_ID" => "main",
-       "DESCRIPTION" => "input: (domain: ".$domain." url: ".$queryUrl." method: ".$method." options: ".$queryData.") output: ".$output,
-    ));
-
-    //Если в ответе остались не попавшие в первые 50 элементов элементы, то запрвшиваем их с отступом start
-    if($arOutput["next"]) {
-      if(!$arOptions["start"])
-        $arOptions["start"] = $arOutput["next"];
-      else
-        $arOptions["start"] += $arOutput["next"];
-
-      $nextOutput = $this->RestCommand(
-        $domain,
-        $method,
-        $arOptions,
-        $token
-      );
-      $arOutput["result"] = array_merge($arOutput["result"], $nextOutput["result"]);
-    }
-    if($arOutput["error"]) {
-      return false;
-    };
-    return $arOutput;
   }
   /**
   * Записывает массив сотрудников в БД
@@ -207,7 +118,17 @@ class classUserSettingsBitrix24 extends CBitrixComponent
    */
   function AddATE($user_key, $user_id, $ate_id, $arData, $arWorkers, $b24_ate_id, $old_token, $reg_token, $reg_domain) {
     //Активируем подписку на события Билайн
-    $subscriptionId = $this->SubscribeActivate($reg_token);
+    $res = ExternalApi::BeelineCommand(
+        "subscription/",
+        $reg_token,
+        "PUT",
+        array(
+            "expires" => SUBSCRIBE_LIFE_SPAN,
+            "subscriptionType" => "BASIC_CALL",
+            "url" => BEELINE_SERVER_NAME."/calls_analytic/include/beeline_connection/beeline_event_handler_bitrix24.php",
+        )
+    );
+    $subscriptionId = $res["subscriptionId"];
 
     //Обновляем идентификатор АТС у пользователя
     $user = new CUser;
@@ -218,8 +139,8 @@ class classUserSettingsBitrix24 extends CBitrixComponent
     if(!$subscriptionId)
         return;
 
-    $entity_data_class_ate = $this->GetEntityDataClass(ATS_HL_BLOCK_ID);
-    $entity_data_class_ate_b24 = $this->GetEntityDataClass(BITRIX24_HL_BLOCK_ID);
+    $entity_data_class_ate = DbInteraction::GetEntityDataClass(ATS_HL_BLOCK_ID);
+    $entity_data_class_ate_b24 = DbInteraction::GetEntityDataClass(BITRIX24_HL_BLOCK_ID);
 
     //Если в базе нет такой АТС, добавляем её и сотрудников
     if(!$ate_id) {
@@ -287,7 +208,7 @@ class classUserSettingsBitrix24 extends CBitrixComponent
       if($value["phone"])
         $arWorkerNumbers[] = $value["phone"];
     };
-    $entity_data_class = $this->GetEntityDataClass(WORKERS_HL_BLOCK_ID);
+    $entity_data_class = DbInteraction::GetEntityDataClass(WORKERS_HL_BLOCK_ID);
     $rsData = $entity_data_class::getList(array(
        'select' => array('ID', 'UF_USER_PHONE_NUMBER'),
        'filter' => array("UF_PHONE_NUMBER"=>$arWorkerNumbers, "!UF_USER_PHONE_NUMBER"=>$arUser["LOGIN"])
@@ -303,7 +224,7 @@ class classUserSettingsBitrix24 extends CBitrixComponent
     $el = $rsData->fetch();
     $key = $el["UF_USER_KEY"];
 
-    $entity_data_class = $this->GetEntityDataClass(ATE_WORKERS_HL_BLOCK_ID);
+    $entity_data_class = DbInteraction::GetEntityDataClass(ATE_WORKERS_HL_BLOCK_ID);
     $rsData = $entity_data_class::getList(array(
        'select' => array('ID', 'UF_KEY'),
        'filter' => array("UF_PHONE_NUMBER"=>$arWorkerNumbers)
@@ -311,7 +232,7 @@ class classUserSettingsBitrix24 extends CBitrixComponent
     $el = $rsData->fetch();
     if(!empty($el["UF_KEY"])) {
       $key = $el["UF_KEY"];
-      $entity_data_class = $this->GetEntityDataClass(ATS_HL_BLOCK_ID);
+      $entity_data_class = DbInteraction::GetEntityDataClass(ATS_HL_BLOCK_ID);
       $rsData = $entity_data_class::getList(array(
          'select' => array('ID'),
          'filter' => array("UF_KEY"=>$key)
@@ -328,7 +249,7 @@ class classUserSettingsBitrix24 extends CBitrixComponent
    * @param string $old_token страый идентификатор АТС
    */
   function CheckB24Subscription($user_key, &$b24_ate_id, &$old_token) {
-    $entity_data_class = $this->GetEntityDataClass(BITRIX24_HL_BLOCK_ID);
+    $entity_data_class = DbInteraction::GetEntityDataClass(BITRIX24_HL_BLOCK_ID);
     $rsData = $entity_data_class::getList(array(
        'select' => array('ID', 'UF_BEELINE_TOKEN'),
        'filter' => array("UF_KEY"=>$user_key)
@@ -360,37 +281,6 @@ class classUserSettingsBitrix24 extends CBitrixComponent
     );
   }
   /**
-  * Активирует подписку Билайн
-  *
-  * @param string $new_token новый идентификатор АТС
-  * @return string $res["subscriptionId"] id новой подписки от Билайн
-  */
-  function SubscribeActivate($new_token) {
-    $url = "https://cloudpbx.beeline.ru/apis/portal/subscription";
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url );
-    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "PUT");
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, "{ \"expires\" : "
-        .SUBSCRIBE_LIFE_SPAN
-        .", \"subscriptionType\" : \"BASIC_CALL\", \"url\" : \""
-        .BEELINE_SERVER_NAME
-        ."/calls_analytic/include/beeline_connection/beeline_event_handler_bitrix24.php\" }");
-    curl_setopt($ch, CURLOPT_HTTPHEADER, array(
-      'X-MPBX-API-AUTH-TOKEN: '.$new_token,
-      'Content-Type: application/json',
-    ));
-    $res = curl_exec($ch);
-    curl_close($ch, CURLINFO_HTTP_CONNECTCODE);
-    CEventLog::Add(array(
-       "AUDIT_TYPE_ID" => "BITRIX24_BEELINE",
-       "MODULE_ID" => "main",
-       "DESCRIPTION" => "new_token: ".$new_token." res: ".$res,
-    ));
-    $res = json_decode($res, true);
-    return $res["subscriptionId"];
-  }
-  /**
    * Собирает данные для построения таблицы сопоставления пользователей Билайн и Bitrix24
    *
    * @param array $arResult
@@ -401,7 +291,7 @@ class classUserSettingsBitrix24 extends CBitrixComponent
    * @param string $token токен Билайн
    */
   function CreateUserSettingsTable(&$arResult, $arWorkers, $key, $access_token, $domain, $token) {
-    $arResult["BEELINE_WORKERS"] = $this->GetBeelineWorkers($arWorkers);
+    $arResult["BEELINE_WORKERS"] = $this->GetBeelineWorkersMod($arWorkers);
     $arResult["USERS_DATA"] = $this->GetBitrixUsers($key, $domain, $access_token);
     $arResult["MULTICALL_NUMBERS"] = $this->GetMulticallNumbers($token, $key);
     if($arResult["ATE_LIMIT"] && $arResult["ATE_LIMIT"]!="all") {
@@ -422,30 +312,19 @@ class classUserSettingsBitrix24 extends CBitrixComponent
    * @return array $arAnswerModif массив многоканальных номеров в виде Номер-Имя номера из БД
    */
   function GetMulticallNumbers($token, $key) {
-    //Получаем список многоканальных номеров из Билайн
     if(!$token)
       return;
-    $ch = curl_init();
 
-    curl_setopt($ch, CURLOPT_URL, "https://cloudpbx.beeline.ru/apis/portal/numbers");
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "GET");
+    //Получаем список многоканальных номеров из Билайн
+    $arAnswer =  ExternalApi::BeelineCommand("numbers/", $token, "GET", array());
 
-    $headers = array();
-    $headers[] = "X-Mpbx-Api-Auth-Token: ".$token;
-    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-
-    $result = curl_exec($ch);
-    curl_close ($ch);
-
-    $arAnswer = json_decode($result, true);
     $arAnswerModif = array();
     foreach ($arAnswer as $value) {
       $arAnswerModif[$value["phone"]]="";
     }
 
     //Подставляем этим номерам имена из БД
-    $entity_data_class = $this->GetEntityDataClass(BITRIX24_MULTICHANNEL_HL_BLOCK_ID);
+    $entity_data_class = DbInteraction::GetEntityDataClass(BITRIX24_MULTICHANNEL_HL_BLOCK_ID);
     $rsData = $entity_data_class::getList(array(
      'select' => array('ID', 'UF_NUMBER', 'UF_NAME', 'UF_SOURCE_ID'),
      'filter' => array(
@@ -566,11 +445,13 @@ class classUserSettingsBitrix24 extends CBitrixComponent
 
     //Отсылаем сформированные запросы
     foreach($arRestQuery as $query) {
-      $batch = $this->RestCommand(
-        $domain,
-        "batch",
-        $query,
-        $arATEData["access_token"]
+      $batch = ExternalApi::RestCommand(
+          array(
+              "bitrix24_token" => $arATEData["access_token"],
+              "domain" => $domain,
+          ),
+          "batch",
+          $query
       );
       $arAnswer = array_merge($batch["result"]["result"], $arAnswer);
     }
@@ -608,7 +489,7 @@ class classUserSettingsBitrix24 extends CBitrixComponent
    * @param array $arWorkers массив абонентов Билайн
    * @return array $arWorkersModif модифицированный массив абонентов Билайн
    */
-  function GetBeelineWorkers($arWorkers) {
+  function GetBeelineWorkersMod($arWorkers) {
     $arWorkersModif = array();
     foreach ($arWorkers as $worker) {
       $arWorkersModif[$worker["userId"]]=$worker;
@@ -624,7 +505,7 @@ class classUserSettingsBitrix24 extends CBitrixComponent
    * @return array $arUsersData массив данных пользователей Bitrix24
    */
   function GetBitrixUsers($key, $domain, $access_token) {
-    $entity_data_class = $this->GetEntityDataClass(BITRIX24_WORKERS_HL_BLOCK_ID);
+    $entity_data_class = DbInteraction::GetEntityDataClass(BITRIX24_WORKERS_HL_BLOCK_ID);
     $rsData = $entity_data_class::getList(array(
      'select' => array('*'),
      'filter' => array(
@@ -642,7 +523,17 @@ class classUserSettingsBitrix24 extends CBitrixComponent
       $arBitrixUsers["ROW_".$el["UF_ROW"]]["beeline_user_id"]=$el["UF_BEELINE_USER_ID"];
     };
 
-    $arAllBitrixUsers = $this->RestCommand($domain, "user.get", array(), $access_token)["result"];
+    $arAllBitrixUsers = ExternalApi::RestCommand(
+          array(
+              "bitrix24_token" => $access_token,
+              "domain" => $domain,
+          ),
+          "user.get",
+          array()
+    );
+
+    $arAllBitrixUsers = $arAllBitrixUsers["result"];
+
     foreach ($arAllBitrixUsers as $user) {
       $arBitrixList[$user["ID"]]=$user["NAME"]." ".$user["LAST_NAME"];
     }
@@ -650,71 +541,11 @@ class classUserSettingsBitrix24 extends CBitrixComponent
     $arUsersData["BITRIX24_USER_LIST"]=$arBitrixList;
     return $arUsersData;
   }
-  /**
-   * Пролучает данные интеграции, если она существует
-   *
-   * @param string $key идентификатор АТС
-   * @return array $arReturn массив данных АТС
-   */
-  function AteAlreadySubscribed($key) {
-    $entity_data_class = $this->GetEntityDataClass(BITRIX24_HL_BLOCK_ID);
-    $rsData = $entity_data_class::getList(array(
-       'select' => array('*'),
-       'filter' => array("UF_KEY"=>$key),
-    ));
-    $el = $rsData->Fetch();
-    if(!$el["ID"])
-      return;
-
-    //Если access_token bitrix24 истёк, то обновляем его и подставляем новые данные, иначе выводим данные из БД
-    $date = DateTime::createFromFormat('d.m.Y H:i:s', $el['UF_EXPIRES_IN']);
-    $expires = $date->getTimestamp();
-    if($expires <= time()) {
-      $url = "https://oauth.bitrix.info/oauth/token/"
-      ."?client_id=".urlencode(BITRIX24_CLIENT_ID)
-      ."&grant_type=refresh_token"
-      ."&client_secret=".urlencode(BITRIX24_SECRET_CODE)
-      ."&refresh_token=".urlencode($el["UF_REFRESH_TOKEN"]);
-      $ch = curl_init($url);
-      curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-      $output = curl_exec($ch);
-      curl_close($ch, CURLINFO_HTTP_CONNECTCODE);
-      $arOutput=json_decode($output, true);
-      CEventLog::Add(array(
-         "AUDIT_TYPE_ID" => "BITRIX24_METHOD",
-         "MODULE_ID" => "main",
-         "DESCRIPTION" => "input: (url: ".$url.") output: ".$output,
-      ));
-      if(!$arOutput["access_token"]) {
-        return;
-      }
-      $arATE = array(
-        'UF_ACCESS_TOKEN' => $arOutput["access_token"],
-        'UF_EXPIRES_IN' => date("d.m.Y H:i:s", $arOutput["expires"]),
-        'UF_REFRESH_TOKEN' => $arOutput["refresh_token"],
-      );
-      $entity_data_class::update($el["ID"], $arATE);
-      $arAnswer = $arATE;
-    }
-    else {
-      $arAnswer = $el;
-    }
-    $arReturn = array();
-    $arReturn["ate_id"] = $el["ID"];
-    $arReturn["ate_key"] = $key;
-    $arReturn["ate_limit"] = $el["UF_LIMIT"];
-    $arReturn["beeline_token"] = $el["UF_BEELINE_TOKEN"];
-    $arReturn["subscribe_expires"] = $el["UF_SUBSCRIBE_EXPIRES"];
-    $arReturn["bitrix24_token"] = $arAnswer["UF_ACCESS_TOKEN"];
-    $arReturn["domain"] = $el["UF_PORTAL"];
-    $arReturn["options"]["redirect"] = $el["UF_CREATE_REDIRECT"];
-    return $arReturn;
-  }
   public function executeComponent() {
     global $USER;
     if(!$USER->IsAuthorized()) return;
     $user_id=$USER->GetID();
-    $arUser = $this->getUser($user_id);
+    $arUser = DbInteraction::getUser($user_id);
     $this->arResult["USER_DATA"]=$arUser;
 
     //Если началась процедура интеграции, получаем данные для доступа к Bitrix24
@@ -767,6 +598,8 @@ class classUserSettingsBitrix24 extends CBitrixComponent
             }
             else {
               //Если есть, то проверяем есть ли интеграция Bitrix24
+              $b24_ate_id = false;
+              $old_token = false;
               $this->CheckB24Subscription($user_key, $b24_ate_id, $old_token);
 
               //Если есть то обновляем, если нет, то создаём
@@ -811,12 +644,12 @@ class classUserSettingsBitrix24 extends CBitrixComponent
     else
       $current_user_key = $arUser["UF_USER_KEY"];
 
+    $user_ate = DbInteraction::GetB24AteData(array("UF_KEY"=>$current_user_key), BITRIX24_HL_BLOCK_ID);;
 
-    $user_ate = $this->AteAlreadySubscribed($current_user_key);
     if($user_ate["beeline_token"]) {
       $this->arResult["ATE_ALREADY_SUBSCRIBED"] = true;
       $this->arResult["ATE_LIMIT"] = $user_ate["ate_limit"];
-      $this->arResult["ATE_OPTIONS"] = $user_ate["options"];
+      $this->arResult["ATE_OPTIONS"]["options"] = $user_ate["create_redirect"];
       $this->arResult["SUBSCRIBE_EXPIRES"] = $user_ate["subscribe_expires"];
       $date = DateTime::createFromFormat('d.m.Y H:i:s', $user_ate["subscribe_expires"]);
       $expires = $date->getTimestamp();

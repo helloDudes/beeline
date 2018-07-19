@@ -1,7 +1,8 @@
 <?
 require($_SERVER["DOCUMENT_ROOT"]."/bitrix/modules/main/include/prolog_before.php");
-\Bitrix\Main\Loader::includeModule("highloadblock");
-use \Bitrix\Highloadblock\HighloadBlockTable as HLBT;
+\Bitrix\Main\Loader::includeModule('kostya14.custom');
+use \Kostya14\Custom\DbInteraction;
+use \Kostya14\Custom\ExternalApi;
 /**
  * Парсит события звонков (входящий/исходящий, звонок принят, звонок завершён а так же различные редиректы).
  * И направляет их в Bitrix24
@@ -12,22 +13,6 @@ use \Bitrix\Highloadblock\HighloadBlockTable as HLBT;
 
 class BeelineEventHandlerBitrix24
 {
-/**
-* Получает класс сущности highloadblock для дальнейшей работы с таблицей
-*
-* @param int $HlBlockId highloadblock id
-* @return object $entity_data_class сущность
-*/
-  static function GetEntityDataClass($HlBlockId) {
-      if (empty($HlBlockId) || $HlBlockId < 1)
-      {
-          return false;
-      }
-      $hlblock = HLBT::getById($HlBlockId)->fetch();
-      $entity = HLBT::compileEntity($hlblock);
-      $entity_data_class = $entity->getDataClass();
-      return $entity_data_class;
-  }
 /**
 * Записывает старт звонка в БД с его параметрами для дальнейшего анализа
 * Открывает карточку звонка
@@ -72,10 +57,10 @@ class BeelineEventHandlerBitrix24
       $arOptions["TYPE"] = "1";
     };
 
-    $arCall = self::RestCommand($arATEData, "telephony.externalcall.register", $arOptions);
+    $arCall = ExternalApi::RestCommand($arATEData, "telephony.externalcall.register", $arOptions);
 
     //Добавляем параметры события в БД
-    $entity_data_class = self::GetEntityDataClass(BITRIX24_EVENTS_HL_BLOCK_ID);
+    $entity_data_class = DbInteraction::GetEntityDataClass(BITRIX24_EVENTS_HL_BLOCK_ID);
     $entity_data_class::add(array(
       "UF_BEELINE_CALL_ID"=>$arEvent["callId"],
       "UF_BITRIX24_CALL_ID"=>$arCall['result']["CALL_ID"],
@@ -102,7 +87,7 @@ class BeelineEventHandlerBitrix24
       return;
 
     //Собираем данные из прошлых событий звонка для обращений к Bitrix24
-    $entity_data_class = self::GetEntityDataClass(BITRIX24_EVENTS_HL_BLOCK_ID);
+    $entity_data_class = DbInteraction::GetEntityDataClass(BITRIX24_EVENTS_HL_BLOCK_ID);
     $rsData = $entity_data_class::getList(array(
        'select' => array('ID', 'UF_BITRIX24_CALL_ID', 'UF_DIRECTION', 'UF_IS_HUNT_GROUP', 'UF_LEAD_ID'),
        'filter' => array(
@@ -115,7 +100,7 @@ class BeelineEventHandlerBitrix24
     $arOptions["USER_ID"] = $user["UF_CRM_USER_ID"];
 
     //Скрываем карточку звонка
-    self::RestCommand($arATEData, "telephony.externalcall.hide", $arOptions);
+    ExternalApi::RestCommand($arATEData, "telephony.externalcall.hide", $arOptions);
 
     if($user["UF_ADD_TO_CHAT"])
       $arOptions["ADD_TO_CHAT"] = 1;
@@ -162,7 +147,13 @@ class BeelineEventHandlerBitrix24
     }
 
     //Если звонок прямой то собираем опции и отображаем его в CRM
-    if($arEvent["answerTimeUNIX"] && $record_url = self::GetRecordURL($arEvent, $arATEData["beeline_token"]))
+    $record_url = ExternalApi::GetRecordURL(
+        $arEvent["extTrackingId"],
+        $arEvent["targetId"],
+        $arATEData["beeline_token"],
+        RECORD_WAITING_TIME
+    );
+    if($arEvent["answerTimeUNIX"] && $record_url)
       $arOptions["RECORD_URL"] = $record_url;
 
     $arQueries = array();
@@ -192,7 +183,7 @@ class BeelineEventHandlerBitrix24
         );
       }
     }
-    self::RestCommand(
+    ExternalApi::RestCommand(
       $arATEData,
       "batch",
       array(
@@ -202,37 +193,6 @@ class BeelineEventHandlerBitrix24
     );
   }
 /**
-* Ждёт формирования записи разговора RECORD_WAITING_TIME секунд и запрашивает её Билайна
-*
-* @param array $arEvent параметры звонка
-* @param string $token токен Билайн
-* @return string $Output["url"] ссылка на скачивание записи
-*/
-  static function GetRecordURL($arEvent, $token) {
-    sleep(RECORD_WAITING_TIME);
-    $url = "https://cloudpbx.beeline.ru/apis/portal/records/".urlencode($arEvent["extTrackingId"])
-        ."/".urlencode($arEvent["targetId"])."/reference";
-
-    $ch = curl_init();
-
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "GET");
-    $headers = array();
-    $headers[] = "X-Mpbx-Api-Auth-Token: ".$token;
-    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-    $output = curl_exec($ch);
-    curl_close ($ch);
-    $arOutput = json_decode($output, true);
-    CEventLog::Add(array(
-       "AUDIT_TYPE_ID" => "BITRIX24_GET_RECORD",
-       "MODULE_ID" => "main",
-       "DESCRIPTION" => "url: ".$url." token: ".$token." output: ".$output,
-    ));
-
-    return $arOutput["url"];
-  }
-/**
  * Получает данные пользователя
  *
  * @param string $ate_key идентификатор АТС
@@ -240,7 +200,7 @@ class BeelineEventHandlerBitrix24
  * @return array $user данные пользователя
  */
   static function GetUserData($ate_key, $targetID) {
-    $entity_data_class = self::GetEntityDataClass(BITRIX24_WORKERS_HL_BLOCK_ID);
+    $entity_data_class = DbInteraction::GetEntityDataClass(BITRIX24_WORKERS_HL_BLOCK_ID);
     $rsData = $entity_data_class::getList(array(
        'select' => array(
            'ID',
@@ -261,171 +221,6 @@ class BeelineEventHandlerBitrix24
     if(!$user["ID"])
       return false;
     return $user;
-  }
-  /**
-  * При событии разрушения подписки, если оно происходит по текущему id подписки (subscribtionid), то
-  * оформляем подписку заново
-  *
-  * @param string $token токен Билайн
-  * @param int $id сущности подписки на интеграцию
-  */
-  static function Repair($token, $id) {
-    $url = "https://cloudpbx.beeline.ru/apis/portal/subscription";
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url );
-    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "PUT");
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt(
-        $ch,
-        CURLOPT_POSTFIELDS,
-        "{ \"expires\" : "
-        .SUBSCRIBE_LIFE_SPAN
-        .", \"subscriptionType\" : \"BASIC_CALL\", \"url\" : \""
-        .BEELINE_SERVER_NAME
-        ."/calls_analytic/include/beeline_connection/beeline_event_handler_bitrix24.php\" }"
-    );
-    curl_setopt($ch, CURLOPT_HTTPHEADER, array(
-      'X-MPBX-API-AUTH-TOKEN: '.$token,
-      'Content-Type: application/json',
-    ));
-    $output = curl_exec($ch);
-    curl_close($ch, CURLINFO_HTTP_CONNECTCODE);
-    $arOutput = json_decode($output, true);
-
-    $entity_data_class = self::GetEntityDataClass(BITRIX24_HL_BLOCK_ID);
-    $entity_data_class::update($id, array(
-      'UF_SUBSCRIPTION_ID'=>$arOutput["subscriptionId"],
-    ));
-    CAgent::RemoveAgent("SubscriptionRecovery_Bitrix24_Agent::AgentExecute('".$token."', ".$id.");", "main");
-    CAgent::AddAgent(
-      "SubscriptionRecovery_Bitrix24_Agent::AgentExecute('".$token."', ".$id.");",
-      "main",
-      "N",
-      strval(RECOVERY_DURABILITY),
-      date("d.m.Y H:i:s", time()+RECOVERY_DURABILITY),
-      "Y",
-      date("d.m.Y H:i:s", time()+RECOVERY_DURABILITY)
-    );
-  }
-/**
- * Получает данные АТС, из которой приходит событие
- *
- * @param string $subscriptionId id подписки
- * @return array $arATEData данные АТС
- */
-  static function GetATEData($subscriptionId) {
-
-    $entity_data_class = self::GetEntityDataClass(BITRIX24_HL_BLOCK_ID);
-    $rsData = $entity_data_class::getList(array(
-       'select' => array(
-           'ID',
-           'UF_ACCESS_TOKEN',
-           'UF_REFRESH_TOKEN',
-           'UF_EXPIRES_IN',
-           'UF_PORTAL',
-           'UF_BEELINE_TOKEN',
-           'UF_KEY',
-           'UF_CREATE_REDIRECT'
-       ),
-       'filter' => array(
-         "UF_SUBSCRIPTION_ID"=>$subscriptionId,
-         ">UF_SUBSCRIBE_EXPIRES"=>date("d.m.Y H:i:s"),
-       ),
-    ));
-    $el = $rsData->Fetch();
-
-    if(!$el["ID"])
-      return;
-    $date = DateTime::createFromFormat('d.m.Y H:i:s', $el['UF_EXPIRES_IN']);
-    $expires = $date->getTimestamp();
-
-    //Если ключ доступа истёк, то берём новый и обновляем полученные в ответе данные
-    if($expires <= time()) {
-      $url = "https://oauth.bitrix.info/oauth/token/"
-      ."?client_id=".urlencode(BITRIX24_CLIENT_ID)
-      ."&grant_type=refresh_token"
-      ."&client_secret=".urlencode(BITRIX24_SECRET_CODE)
-      ."&refresh_token=".urlencode($el["UF_REFRESH_TOKEN"]);
-
-      $ch = curl_init($url);
-      curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-      $output = curl_exec($ch);
-      curl_close($ch, CURLINFO_HTTP_CONNECTCODE);
-      $arOutput=json_decode($output, true);
-      CEventLog::Add(array(
-         "AUDIT_TYPE_ID" => "BITRIX24_METHOD",
-         "MODULE_ID" => "main",
-         "DESCRIPTION" => "input: (url: ".$url.") output: ".$output,
-      ));
-      if(!$arOutput["access_token"]) {
-        return false;
-      }
-
-      $arATE = array(
-        'UF_ACCESS_TOKEN' => $arOutput["access_token"],
-        'UF_EXPIRES_IN' => date("d.m.Y H:i:s", $arOutput["expires"]),
-        'UF_REFRESH_TOKEN' => $arOutput["refresh_token"],
-        'UF_MEMBER_ID' => $arOutput["member_id"],
-      );
-      $entity_data_class::update($el["ID"], $arATE);
-      $arAnswer = $arATE;
-    }
-    else {
-      $arAnswer = $el;
-    }
-    $arReturn = array();
-    $arReturn["ate_id"] = $el["ID"];
-    $arReturn["ate_key"] = $el["UF_KEY"];
-    $arReturn["beeline_token"] = $el["UF_BEELINE_TOKEN"];
-    $arReturn["bitrix24_token"] = $arAnswer["UF_ACCESS_TOKEN"];
-    $arReturn["domain"] = $el["UF_PORTAL"];
-    $arReturn["create_redirect"] = $el["UF_CREATE_REDIRECT"];
-    return $arReturn;
-  }
-/**
- * Посылает какую либо команду в Bitrix24
- *
- * @param array $arATEData данные АТС
- * @param string $method метод REST API
- * @param array $arOptions набор опций
- * @return array $arOutput ответ Bitrix24
- */
-  static function RestCommand($arATEData, $method, $arOptions) {
-    $queryUrl  = 'https://' . $arATEData["domain"] . '/rest/' . $method;
-    $queryData = http_build_query(array_merge($arOptions, array('auth' => $arATEData["bitrix24_token"])));
-
-    $curl = curl_init();
-    curl_setopt_array($curl, array(
-        CURLOPT_SSL_VERIFYPEER => 0,
-        CURLOPT_POST           => 1,
-        CURLOPT_HEADER         => 0,
-        CURLOPT_RETURNTRANSFER => 1,
-        CURLOPT_URL            => $queryUrl,
-        CURLOPT_POSTFIELDS     => $queryData,
-        CURLOPT_VERBOSE         => 1
-    ));
-    $output = curl_exec($curl);
-    curl_close($curl);
-    $arOutput = json_decode($output, true);
-    CEventLog::Add(array(
-       "AUDIT_TYPE_ID" => "BITRIX24_METHOD",
-       "MODULE_ID" => "main",
-       "DESCRIPTION" => "input: (domain: "
-           .$arATEData["domain"]
-           ." url: "
-           .$queryUrl
-           ." method: "
-           .$method
-           ." options: "
-           .$queryData
-           .") output: "
-           .$output,
-    ));
-    if($arOutput["error"]) {
-      return false;
-    };
-
-    return $arOutput;
   }
 /**
  * Перебирает переадресации звонка и анализирует их
@@ -460,7 +255,7 @@ class BeelineEventHandlerBitrix24
 
     //Если не найдены даные о многоканальном источнике, то ищем их в предыдущем событии, иначе добавляем их сейчас
     if(!$multicallNumber && $arEvent["abonentNumber"] && $arEvent["clientNumber"]) {
-      $entity_data_class = self::GetEntityDataClass(BITRIX24_EVENTS_HL_BLOCK_ID);
+      $entity_data_class = DbInteraction::GetEntityDataClass(BITRIX24_EVENTS_HL_BLOCK_ID);
       $rsData = $entity_data_class::getList(array(
          'select' => array('ID', 'UF_MULTICALL_NUMBER'),
          'filter' => array(
@@ -473,7 +268,7 @@ class BeelineEventHandlerBitrix24
 
     }
     elseif($multicallNumber && (!$arEvent["abonentNumber"] || !$arEvent["clientNumber"])) {
-      $entity_data_class = self::GetEntityDataClass(BITRIX24_EVENTS_HL_BLOCK_ID);
+      $entity_data_class = DbInteraction::GetEntityDataClass(BITRIX24_EVENTS_HL_BLOCK_ID);
       $rsData = $entity_data_class::add(array(
         "UF_EXT_TRACKING_ID"=>$arEvent["extTrackingId"],
         "UF_MULTICALL_NUMBER"=>$multicallNumber,
@@ -523,7 +318,7 @@ class BeelineEventHandlerBitrix24
   static function CallCenterCallRegister($arEvent, $arATEData, $arAdd) {
     //Получаем информацию о событиях цепочки обзвона и настройках учавствующих пользователей и объединяем эти настройки
     //для формирования опций звонка
-    $entity_data_class = self::GetEntityDataClass(BITRIX24_EVENTS_HL_BLOCK_ID);
+    $entity_data_class = DbInteraction::GetEntityDataClass(BITRIX24_EVENTS_HL_BLOCK_ID);
     $rsData = $entity_data_class::getList(array(
        'select' => array('*'),
        'filter' => array(
@@ -548,7 +343,12 @@ class BeelineEventHandlerBitrix24
     //Если звонки никто не ответил, назначаем абонентом ответственного менеджера
     if($arFeatures["is_answered"]) {
       $arRecord["extTrackingId"]=$arEvent["extTrackingId"];
-      $record_url = self::GetRecordURL($arRecord, $arATEData["beeline_token"]);
+      $record_url = ExternalApi::GetRecordURL(
+            $arRecord["extTrackingId"],
+            $arRecord["targetId"],
+            $arATEData["beeline_token"],
+            RECORD_WAITING_TIME
+      );
       if($record_url)
         $arOptions["RECORD_URL"] = $record_url;
     }
@@ -566,7 +366,7 @@ class BeelineEventHandlerBitrix24
     $arQueries["externalcall_finish"]="telephony.externalcall.finish?".http_build_query($arOptions);
 
     if(!$extension = $manager["UF_EXTENSION"]) {
-      $entity_data_class = self::GetEntityDataClass(BITRIX24_WORKERS_HL_BLOCK_ID);
+      $entity_data_class = DbInteraction::GetEntityDataClass(BITRIX24_WORKERS_HL_BLOCK_ID);
       $rsData = $entity_data_class::getList(array(
          'select' => array('ID', 'UF_EXTENSION'),
          'filter' => array(
@@ -603,7 +403,7 @@ class BeelineEventHandlerBitrix24
         )
       );
     }
-    self::RestCommand(
+    ExternalApi::RestCommand(
       $arATEData,
       "batch",
       array(
@@ -619,7 +419,7 @@ class BeelineEventHandlerBitrix24
  * @return array $manager данные менеджера
  */
   static function GetManager($key) {
-    $entity_data_class = self::GetEntityDataClass(BITRIX24_WORKERS_HL_BLOCK_ID);
+    $entity_data_class = DbInteraction::GetEntityDataClass(BITRIX24_WORKERS_HL_BLOCK_ID);
     $rsData = $entity_data_class::getList(array(
        'select' => array('ID', 'UF_CRM_USER_ID', 'UF_EXTENSION'),
        'filter' => array(
@@ -629,34 +429,6 @@ class BeelineEventHandlerBitrix24
     ));
     $manager = $rsData->Fetch();
     return $manager;
-  }
-/**
- * Посылает какую либо команду в Билайн
- *
- * @param string $url адрес метода
- * @param string $token токен Билайн
- * @param string $type тип POST/GET...
- * @param array $arOptions массив опций
- * @return array $arAnswer данные ответа Билайн
- */
-  static function BeelineCommand($url, $token, $type, $arOptions) {
-    $ch = curl_init();
-
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($arOptions));
-    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $type);
-
-    $headers = array();
-    $headers[] = "X-Mpbx-Api-Auth-Token: ".$token;
-    $headers[] = "Content-Type: application/json";
-    curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
-
-    $result = curl_exec($ch);
-    curl_close ($ch);
-
-    $arAnswer = json_decode($result, true);
-    return $arAnswer;
   }
 /**
  * Создаёт правило индивидуальной переадрессации
@@ -678,7 +450,7 @@ class BeelineEventHandlerBitrix24
       "inboundNumber"=>$clientNumber,
       "extension"=>$extension,
     ));
-    $addAnswer = self::BeelineCommand(
+    $addAnswer = ExternalApi::BeelineCommand(
       BEELINE_API_SERVER_NAME."/icr/route",
       $arATEData["beeline_token"],
       "PUT",
@@ -758,7 +530,10 @@ class BeelineEventHandlerBitrix24
       || $arEvent["event"]=="SubscriptionTerminatedEvent"
     )
     {
-      $arATEData = self::GetATEData($arEvent["subscriptionId"]);
+      $arATEData = DbInteraction::GetB24AteData(
+          array("UF_SUBSCRIPTION_ID"=>$arEvent["subscriptionId"],),
+          BITRIX24_HL_BLOCK_ID
+      );
       if(!$arATEData["ate_id"])
         return;
     }
@@ -782,7 +557,14 @@ class BeelineEventHandlerBitrix24
     }
     //Если сломалась действующая подписка, чиним
     if($arEvent["event"]=="SubscriptionTerminatedEvent") {
-      self::Repair($arATEData["beeline_token"], $arATEData["ate_id"]);
+      ExternalApi::RepairSubscribe(array(
+          "token" => $arATEData["beeline_token"],
+          "life_span" => SUBSCRIBE_LIFE_SPAN,
+          "handler_url" => BEELINE_SERVER_NAME ."/calls_analytic/include/beeline_connection/beeline_event_handler_bitrix24.php",
+          "id" => $arATEData["ate_id"],
+          "agent_name" => "SubscriptionRecovery_Bitrix24_Agent::AgentExecute('".$arATEData["beeline_token"]."', ".$arATEData["ate_id"].");",
+          "recovery_durability" => RECOVERY_DURABILITY
+      ));
     };
   }
 }
