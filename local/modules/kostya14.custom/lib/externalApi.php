@@ -11,7 +11,14 @@ namespace Kostya14\Custom;
 
 class ExternalApi
 {
-    const BEELINE_URL = "https://cloudpbx.beeline.ru/apis/portal/";
+    const SUBSCRIBE_LIFE_SPAN = 3600;
+    const RECOVERY_DURABILITY = 3400;
+    const BEELINE_SERVER_NAME = "beelinestore.ru";
+    const BEELINE_API_URL = "https://cloudpbx.beeline.ru/apis/portal/";
+    const MULTICHANNEL_STATUS_ID_PREFIX = "MULTICHANNEL_";
+    const REST_API_LIMIT = 50;
+    const RECORD_WAITING_TIME = 100;
+
 
     /**
      * Посылает какую либо команду в Билайн
@@ -20,7 +27,6 @@ class ExternalApi
      * @param string $token токен Билайн
      * @param string $type тип POST/GET...
      * @param array $arOptions массив опций метода
-     * @param boolean $is_json устанавливать ли заголовок Content-Type: application/json
      * @return array $arAnswer данные ответа Билайн
      */
     public static function BeelineCommand($url, $token, $type = "GET", $arOptions = array()) {
@@ -30,7 +36,7 @@ class ExternalApi
 
         $ch = curl_init();
 
-        curl_setopt($ch, CURLOPT_URL, self::BEELINE_URL.$url);
+        curl_setopt($ch, CURLOPT_URL, self::BEELINE_API_URL.$url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
         curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $type);
 
@@ -49,6 +55,18 @@ class ExternalApi
         curl_close ($ch);
 
         $arOutput = json_decode($output, true);
+
+        if($arOutput["errorCode"]) {
+            \CEventLog::Add(array(
+                "AUDIT_TYPE_ID" => "BEELINE_ERROR",
+                "MODULE_ID" => "main",
+                "DESCRIPTION" => "method: ".$url
+                    ." token: ".$token
+                    ." type: ".$type
+                    ." arOption: (".json_encode($arOptions).") output: ".$output,
+            ));
+        }
+
         return $arOutput;
     }
     /**
@@ -129,16 +147,7 @@ class ExternalApi
 
         $url = "/records/" . urlencode($extTrackingId) . "/" . urlencode($targetId) . "/reference";
 
-        try {
-            $arOutput = self::BeelineCommand($url, $token, "GET");
-        }
-        catch(\Exception $e) {
-            \CEventLog::Add(array(
-                "AUDIT_TYPE_ID" => "MY_ERROR",
-                "MODULE_ID" => "main",
-                "DESCRIPTION" => $e->getMessage(),
-            ));
-        }
+        $arOutput = self::BeelineCommand($url, $token, "GET");
 
         return $arOutput["url"];
     }
@@ -146,17 +155,15 @@ class ExternalApi
      * Получаем новый access token Bitrix24 и заменяем им старый в указаной таблице
      *
      * @param int $id подписки АТС
-     * @param array $arData BITRIX24_CLIENT_ID, BITRIX24_SECRET_CODE, refresh_token
+     * @param string $refresh_token токен для получения токена доступа
      * @param int $hl_block_id id таблицы подписки
      * @throws \Exception если не удалось получить новый access token в ответе
      * @return array $arATE новые данные АТС
      */
-    public static function GetNewB24Access($id, $arData, $hl_block_id) {
+    public static function GetNewB24Access($id, $refresh_token, $hl_block_id) {
         if(
             !$id
-            || empty($arData["BITRIX24_CLIENT_ID"])
-            || empty($arData["BITRIX24_SECRET_CODE"])
-            || empty($arData["refresh_token"])
+            || empty($refresh_token)
             || !$hl_block_id
         )
         {
@@ -164,10 +171,10 @@ class ExternalApi
         }
 
         $url = "https://oauth.bitrix.info/oauth/token/"
-            ."?client_id=".urlencode($arData["BITRIX24_CLIENT_ID"])
+            ."?client_id=".urlencode(DbInteraction::BITRIX24_CLIENT_ID)
             ."&grant_type=refresh_token"
-            ."&client_secret=".urlencode($arData["BITRIX24_SECRET_CODE"])
-            ."&refresh_token=".urlencode($arData["refresh_token"]);
+            ."&client_secret=".urlencode(DbInteraction::BITRIX24_SECRET_CODE)
+            ."&refresh_token=".urlencode($refresh_token);
 
         $ch = curl_init($url);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -175,15 +182,15 @@ class ExternalApi
         curl_close($ch, CURLINFO_HTTP_CONNECTCODE);
         $arOutput=json_decode($output, true);
 
-        if(!$arOutput["access_token"]) {
-            throw new \Exception(__FUNCTION__.': query fail:('.$output.')');
-        }
-
         \CEventLog::Add(array(
             "AUDIT_TYPE_ID" => "BITRIX24_METHOD",
             "MODULE_ID" => "main",
             "DESCRIPTION" => "input: (url: ".$url.") output: ".$output,
         ));
+
+        if(!$arOutput["access_token"]) {
+            return false;
+        }
 
         $arATE = array(
             'UF_ACCESS_TOKEN' => $arOutput["access_token"],
@@ -199,8 +206,8 @@ class ExternalApi
      * Восстанавливаем подписку на события звонка, если она разрушилась преждевременно
      *
      * @param array $arData token токен Билайн, life_span срок жизни подписки,
-     * handler_url по какому адресу получать подписку, agent_name имя агента переподписки,
-     * recovery_durability частота срабатывания агента переподписки
+     * handler_url по какому адресу получать подписку, agent_name имя агента переподписки
+     * id подписки на интеграцию
      */
     public static function RepairSubscribe($arData) {
         if(
@@ -209,7 +216,6 @@ class ExternalApi
             || empty($arData["handler_url"])
             || !$arData["id"]
             || empty($arData["agent_name"])
-            || !$arData["recovery_durability"]
         )
         {
             return;
@@ -225,9 +231,12 @@ class ExternalApi
                 "expires" => $arData["life_span"],
                 "subscriptionType" => "BASIC_CALL",
                 "url" => $arData["handler_url"],
-            ),
-            true
+            )
         );
+
+        if(!$arOutput["subscriptionId"]) {
+            return;
+        }
 
         $entity_data_class = DbInteraction::GetEntityDataClass($arData["hl_block_id"]);
         $entity_data_class::update($arData["id"], array(
@@ -238,10 +247,10 @@ class ExternalApi
             $arData["agent_name"],
             "main",
             "N",
-            strval($arData["recovery_durability"]),
-            date("d.m.Y H:i:s", time()+$arData["recovery_durability"]),
+            strval(self::RECOVERY_DURABILITY),
+            date("d.m.Y H:i:s", time()+self::RECOVERY_DURABILITY),
             "Y",
-            date("d.m.Y H:i:s", time()+$arData["recovery_durability"])
+            date("d.m.Y H:i:s", time()+self::RECOVERY_DURABILITY)
         );
     }
 }

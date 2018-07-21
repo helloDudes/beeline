@@ -13,6 +13,9 @@ use \Bitrix\Highloadblock\HighloadBlockTable as HLBT;
 
 class DbInteraction
 {
+    const BITRIX24_CLIENT_ID = 1111111111;
+    const BITRIX24_SECRET_CODE = "somesecretcode";
+
     /**
      * Получает класс сущности highloadblock для дальнейшей работы с таблицей
      *
@@ -83,16 +86,12 @@ class DbInteraction
 
         //Если ключ доступа истёк, то берём новый и обновляем полученные в ответе данные
         if($expires <= time()) {
-            try {
-                $arATE = ExternalApi::GetNewB24Access($el["ID"], $el["UF_REFRESH_TOKEN"]);
+            $arATE = ExternalApi::GetNewB24Access($el["ID"], $el["UF_REFRESH_TOKEN"], $hl_block_id);
+
+            if(!$arATE) {
+                return false;
             }
-            catch (\Exception $e) {
-                \CEventLog::Add(array(
-                    "AUDIT_TYPE_ID" => "BITRIX24_ERROR",
-                    "MODULE_ID" => "main",
-                    "DESCRIPTION" => $e->getMessage(),
-                ));
-            }
+
             $arAnswer = $arATE;
         }
         else {

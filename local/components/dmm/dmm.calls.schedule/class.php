@@ -5,10 +5,11 @@
  * @author Чижик Константин
  * @copyright 2018 ООО DMM
  */
-\Bitrix\Main\Loader::includeModule('kostya14.custom');
+
 use \Kostya14\Custom\DbInteraction;
 use \Kostya14\Custom\Filter;
 use \Bitrix\Main\Entity;
+use \Bitrix\Main\Context;
 
 class classCallsScheduleB extends CBitrixComponent
 {
@@ -20,7 +21,8 @@ class classCallsScheduleB extends CBitrixComponent
   * @return array $arWorkerNumbers массив номеров сотрудников
   */
   function GetWorkers(&$arResult, $user_login) {
-    $entity_data_class = DbInteraction::GetEntityDataClass(WORKERS_HL_BLOCK_ID);
+
+    $entity_data_class = DbInteraction::GetEntityDataClass($this->arParams["WORKERS_HL_BLOCK_ID"]);
     $rsData = $entity_data_class::getList(array(
        'select' => array('ID', 'UF_PHONE_NUMBER', 'UF_FIRST_NAME', 'UF_LAST_NAME'),
        'filter' => array('UF_USER_PHONE_NUMBER'=>$user_login),
@@ -37,7 +39,7 @@ class classCallsScheduleB extends CBitrixComponent
       };
     };
     if(count($arWorkerNumbers)==0)
-      $arWorkerNumbers = 0;
+      $arWorkerNumbers = false;
     return $arWorkerNumbers;
   }
 
@@ -124,8 +126,11 @@ class classCallsScheduleB extends CBitrixComponent
   * @param array $arWorkerNumbers массив телефонов сотрудников
   */
   function GetDate(&$arResult, $arWorkerNumbers) {
+    $context = Context::getCurrent();
+    $request = $context->getRequest();
+
     //Проверем интервал
-    $arResult["PARAMS"] = $this->CheckInterval($_GET["interval"]);
+    $arResult["PARAMS"] = $this->CheckInterval($request->getQuery("interval"));
     $arResult["PARAMS"]["FORMAT"]=str_replace("%", "", $arResult["PARAMS"]["SQL_FORMAT"]);
     $i=0;
     $time = $arResult["PARAMS"]["START_TIME"];
@@ -143,10 +148,10 @@ class classCallsScheduleB extends CBitrixComponent
     };
 
     //Проверяем остальные фильтры
-    Filter::CheckWorkers($arWorkerNumbers, $_GET);
+    Filter::CheckWorkers($arWorkerNumbers, $request->getQueryList());
     $workers = "('".implode("', '", $arWorkerNumbers)."')";
-    $direction = $this->CheckDirection($_GET["direction"]);
-    $answered = $this->CheckAnswer($_GET["is_answered"]);
+    $direction = $this->CheckDirection($request->getQuery("direction"));
+    $answered = $this->CheckAnswer($request->getQuery("is_answered"));
 
     //Запрашиваем
     $str = "SELECT COUNT(*) AS CNT, DATE_FORMAT(`UF_CALL_CREATE_DATE`, '"
@@ -161,10 +166,31 @@ class classCallsScheduleB extends CBitrixComponent
       $arResult['DATE'][$el["d"]]["COUNT"]=$el['CNT'];
     }
   }
+  /**
+   * @throws Exception юзер не найден
+   * @throws \Bitrix\Main\LoaderException Модуль kostya14.custom не установлен
+   */
   public function executeComponent() {
+    if (!\Bitrix\Main\Loader::includeModule('kostya14.custom')) {
+        throw new \Bitrix\Main\LoaderException("Модуль kostya14.custom не установлен");
+    }
+
+    if(!$this->arParams["WORKERS_HL_BLOCK_ID"])
+    {
+        ShowError("Недостаточно параметров");
+        return;
+    }
+
+    $this->arParams["WORKERS_HL_BLOCK_ID"] = intval($this->arParams["WORKERS_HL_BLOCK_ID"]);
+
     global $USER;
     if(!$USER->IsAuthorized()) return;
     $user_login = $USER->GetLogin();
+
+    if(!$user_login) {
+        throw New Exception("user not found");
+    }
+
     if($this->startResultCache(false, array($user_login, $_GET)))
     {
       $arWorkerNumbers = $this->GetWorkers($this->arResult, $user_login);

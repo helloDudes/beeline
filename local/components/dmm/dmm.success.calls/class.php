@@ -5,14 +5,14 @@
  * @author Чижик Константин
  * @copyright 2018 ООО DMM
  */
-\Bitrix\Main\Loader::includeModule('kostya14.custom');
+
 use \Kostya14\Custom\DbInteraction;
 use \Kostya14\Custom\Filter;
 use \Bitrix\Main\Entity;
+use \Bitrix\Main\Context;
 
 class classSuccessCallsB extends CBitrixComponent
 {
-  const MAX_WORKERS = 15;
   /**
   * Получает список сотрудников
   *
@@ -21,7 +21,7 @@ class classSuccessCallsB extends CBitrixComponent
   * @return array $arWorkerNumbers массив номеров сотрудников
   */
   function GetWorkers(&$arResult, $user_login) {
-    $entity_data_class = DbInteraction::GetEntityDataClass(WORKERS_HL_BLOCK_ID);
+    $entity_data_class = DbInteraction::GetEntityDataClass($this->arParams["WORKERS_HL_BLOCK_ID"]);
     $rsData = $entity_data_class::getList(array(
        'select' => array('ID', 'UF_PHONE_NUMBER', 'UF_FIRST_NAME', 'UF_LAST_NAME'),
        'filter' => array('UF_USER_PHONE_NUMBER'=>$user_login),
@@ -54,16 +54,24 @@ class classSuccessCallsB extends CBitrixComponent
   */
   function GetCalls(&$arResult, $arWorkerNumbers, &$arWorkerCounts) {
 
+    $context = Context::getCurrent();
+    $request = $context->getRequest();
+
     //Проверяем фильтры
-    Filter::CheckWorkers($arWorkerNumbers, $_GET);
+    Filter::CheckWorkers($arWorkerNumbers, $request->getQueryList());
     $filter = array(
-      array("LOGIC"=>"AND", array('UF_ABONENT_NUMBER'=>$arWorkerNumbers), array('!UF_ABONENT_NUMBER'=>false)),
+      array(
+          "LOGIC"=>"AND",
+          array('UF_ABONENT_NUMBER'=>$arWorkerNumbers),
+          array('!UF_ABONENT_NUMBER'=>false)
+      ),
       'UF_CALL_DIRECTION'=>true,
     );
-    Filter::CheckData($filter, $_GET["date_from"], $_GET["date_to"]);
+
+    Filter::CheckData($filter, $request->getQuery("date_from"), $request->getQuery("date_to"));
 
     //Формеруем параметры запроса
-    $entity_data_class = DbInteraction::GetEntityDataClass(CALLS_HL_BLOCK_ID);
+    $entity_data_class = DbInteraction::GetEntityDataClass($this->arParams["CALLS_HL_BLOCK_ID"]);
     $get_list_params = array(
        'select' => array('CNT', 'UF_ABONENT_NUMBER'),
        'filter' => $filter,
@@ -98,24 +106,56 @@ class classSuccessCallsB extends CBitrixComponent
   */
   function workersSynthesis(&$arResult, $arWorkerCounts) {
       arsort($arWorkerCounts);
-      $arWorkerCounts = array_slice($arWorkerCounts, 0, self::MAX_WORKERS, true);
+      $arWorkerCounts = array_slice($arWorkerCounts, 0, $this->arParams["MAX_WORKERS"], true);
       foreach ($arResult["WORKERS"] as $key => $value) {
           if (!$arWorkerCounts[$key]) {
               unset($arResult["WORKERS"][$key]);
           }
       }
   }
+
+/**
+ * @throws Exception юзер не найден
+ * @throws \Bitrix\Main\LoaderException Модуль kostya14.custom не установлен
+ */
   public function executeComponent() {
+    if (!\Bitrix\Main\Loader::includeModule('kostya14.custom')) {
+        throw new \Bitrix\Main\LoaderException("Модуль kostya14.custom не установлен");
+    }
+
+    if(
+        !$this->arParams["WORKERS_HL_BLOCK_ID"]
+        || !$this->arParams["CALLS_HL_BLOCK_ID"]
+        || !$this->arParams["MAX_WORKERS"]
+    )
+    {
+        ShowError("Недостаточно параметров");
+        return;
+    }
+
+    $this->arParams["WORKERS_HL_BLOCK_ID"] = intval($this->arParams["WORKERS_HL_BLOCK_ID"]);
+    $this->arParams["CALLS_HL_BLOCK_ID"] = intval($this->arParams["CALLS_HL_BLOCK_ID"]);
+    $this->arParams["MAX_WORKERS"] = intval($this->arParams["MAX_WORKERS"]);
+
     global $USER;
     if(!$USER->IsAuthorized()) return;
     $user_login = $USER->GetLogin();
+
+    if(!$user_login) {
+        throw New Exception("user not found");
+    }
+
     if($this->startResultCache(false, array($user_login, $_GET)))
     {
       $arWorkerNumbers = $this->GetWorkers($this->arResult, $user_login);
       if($arWorkerNumbers) {
         $arWorkerCounts = array();
         $this->GetCalls($this->arResult, $arWorkerNumbers, $arWorkerCounts);
-        if($_GET["all"]=="Y" || count($_GET)==0)
+
+        $context = Context::getCurrent();
+        $request = $context->getRequest();
+
+        if($request->getQuery("all")=="Y" || count($_GET)==0)
           $this->workersSynthesis($this->arResult, $arWorkerCounts);
       }
 	  $this->includeComponentTemplate();

@@ -42,15 +42,6 @@ class kostya14_custom extends CModule
         if($this->isVersionD7())
         {
             if(ModuleManager::isModuleInstalled('highloadblock')) {
-                $path=$this->GetPath()."/install/components";
-
-                if(\Bitrix\Main\IO\Directory::isDirectoryExists($path)) {
-                    CopyDirFiles($path, $_SERVER["DOCUMENT_ROOT"] . "/bitrix/components", true, true);
-                }
-                else {
-                    throw new \Bitrix\Main\IO\InvalidPathException($path);
-                }
-
                 ModuleManager::registerModule($this->MODULE_ID);
             }
             else {
@@ -64,13 +55,6 @@ class kostya14_custom extends CModule
         $APPLICATION->IncludeAdminFile("Установка вспомогательного модуля", $this->GetPath()."/install/step.php");
     }
     function DoUninstall() {
-        $path=$this->GetPath()."/install/components";
-
-        if(\Bitrix\Main\IO\Directory::isDirectoryExists($path)) {
-            DeleteDirFiles($_SERVER["DOCUMENT_ROOT"] . $path, $_SERVER["DOCUMENT_ROOT"] . "/bitrix/components", true, true);
-        }
-
-
         ModuleManager::unRegisterModule($this->MODULE_ID);
     }
 }

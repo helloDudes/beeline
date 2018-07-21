@@ -6,10 +6,10 @@
  * @copyright 2018 ООО DMM
  */
 
-\Bitrix\Main\Loader::includeModule('kostya14.custom');
 use \Kostya14\Custom\DbInteraction;
 use \Kostya14\Custom\Filter;
 use \Bitrix\Main\Entity;
+use \Bitrix\Main\Context;
 
 class classCommonCallsAnalyticB extends CBitrixComponent
 {
@@ -46,7 +46,7 @@ class classCommonCallsAnalyticB extends CBitrixComponent
   * @return array $arWorkerNumbers массив номеров сотрудников
   */
   function GetWorkers(&$arResult, $user_login) {
-    $entity_data_class = DbInteraction::GetEntityDataClass(WORKERS_HL_BLOCK_ID);
+    $entity_data_class = DbInteraction::GetEntityDataClass($this->arParams["WORKERS_HL_BLOCK_ID"]);
     $rsData = $entity_data_class::getList(array(
        'select' => array('ID', 'UF_PHONE_NUMBER', 'UF_FIRST_NAME', 'UF_LAST_NAME',),
        'filter' => array('UF_USER_PHONE_NUMBER'=>$user_login),
@@ -66,7 +66,7 @@ class classCommonCallsAnalyticB extends CBitrixComponent
       };
     };
     if(count($arWorkerNumbers)==0)
-      $arWorkerNumbers = 0;
+      $arWorkerNumbers = false;
     return $arWorkerNumbers;
   }
   /**
@@ -77,16 +77,26 @@ class classCommonCallsAnalyticB extends CBitrixComponent
   * @param array $arWorkerNumbers массив номеров сотрудников
   */
   function GetCalls(&$arResult, $user_key, &$arWorkerNumbers) {
-    $entity_data_class = DbInteraction::GetEntityDataClass(UNANSWERED_CALLS_HL_BLOCK_ID);
+    $entity_data_class = DbInteraction::GetEntityDataClass($this->arParams["UNANSWERED_CALLS_HL_BLOCK_ID"]);
     $page_name = "nav-calls";
-    Filter::CheckWorkers($arWorkerNumbers, $_GET, $page_name);
+
+    $context = Context::getCurrent();
+    $request = $context->getRequest();
+
+    //Проверяем фильтры
+    Filter::CheckWorkers($arWorkerNumbers, $request->getQueryList(), $page_name);
+
     $filter = array();
-    Filter::CheckData($filter, $_GET["date_from"], $_GET["date_to"]);
-    $this->CheckType($filter, $_GET["type"], $user_key, $arWorkerNumbers);
+
+    Filter::CheckData($filter, $request->getQuery("date_from"), $request->getQuery("date_to"));
+    $this->CheckType($filter, $request->getQuery("type"), $user_key, $arWorkerNumbers);
+
+    //Постраничная навигация
     $nav = new \Bitrix\Main\UI\PageNavigation($page_name);
     $nav->allowAllRecords(true)
-        ->setPageSize(7)
+        ->setPageSize($this->arParams["PAGE_SIZE"])
         ->initFromUri();
+
     $rsData = $entity_data_class::getList(array(
       'select' => array(
         'ID',
@@ -117,22 +127,21 @@ class classCommonCallsAnalyticB extends CBitrixComponent
    * @param array $arWorkerNumbers массив номеров сотрудников
    */
   function GetWorkerUnansweredCount(&$arResult, $arWorkerNumbers) {
-    $entity_data_class = DbInteraction::GetEntityDataClass(UNANSWERED_CALLS_HL_BLOCK_ID);
-    Filter::CheckWorkers($arWorkerNumbers, $_GET);
+    $entity_data_class = DbInteraction::GetEntityDataClass($this->arParams["UNANSWERED_CALLS_HL_BLOCK_ID"]);
+
+    $context = Context::getCurrent();
+    $request = $context->getRequest();
+
+    Filter::CheckWorkers($arWorkerNumbers, $request->getQueryList());
     $filter = array(
       array(
-        "LOGIC"=>"AND",
-        array(
-          array(
-            "LOGIC"=>"AND",
-            array('UF_ABONENT_NUMBER'=>$arWorkerNumbers),
-            array('!UF_ABONENT_NUMBER'=>false)
-          )
-        ),
-        array('!UF_ABONENT_NUMBER'=>false)
-      ),
+          "LOGIC"=>"AND",
+          array('UF_ABONENT_NUMBER'=>$arWorkerNumbers),
+          array('!UF_ABONENT_NUMBER'=>false)
+      )
     );
-    Filter::CheckData($filter, $_GET["date_from"], $_GET["date_to"]);
+
+    Filter::CheckData($filter, $request->getQuery("date_from"), $request->getQuery("date_to"));
     $get_list_params = array(
        'select' => array('CNT', 'UF_ABONENT_NUMBER'),
        'filter' => $filter,
@@ -154,11 +163,15 @@ class classCommonCallsAnalyticB extends CBitrixComponent
    * @param string $user_key идентификатор АТС
    */
   function GetRequestCount(&$arResult, $user_key) {
-    $entity_data_class = DbInteraction::GetEntityDataClass(UNANSWERED_CALLS_HL_BLOCK_ID);
+    $entity_data_class = DbInteraction::GetEntityDataClass($this->arParams["UNANSWERED_CALLS_HL_BLOCK_ID"]);
     $filter = array(
       'UF_USER_KEY'=>$user_key,
     );
-    Filter::CheckData($filter, $_GET["date_from"], $_GET["date_to"]);
+
+    $context = Context::getCurrent();
+    $request = $context->getRequest();
+
+    Filter::CheckData($filter, $request->getQuery("date_from"), $request->getQuery("date_to"));
     $get_list_params = array(
        'select' => array('CNT'),
        'filter' => $filter,
@@ -168,11 +181,34 @@ class classCommonCallsAnalyticB extends CBitrixComponent
     $el = $rsData->Fetch();
     $arResult["REQUEST_COUNT"]=$el["CNT"];
   }
+
+/**
+ * @throws Exception юзер не найден
+ * @throws \Bitrix\Main\LoaderException Модуль kostya14.custom не установлен
+ */
   public function executeComponent() {
+    if (!\Bitrix\Main\Loader::includeModule('kostya14.custom')) {
+        throw new \Bitrix\Main\LoaderException("Модуль kostya14.custom не установлен");
+    }
+
+    if(!$this->arParams["WORKERS_HL_BLOCK_ID"] || !$this->arParams["UNANSWERED_CALLS_HL_BLOCK_ID"])
+    {
+        ShowError("Недостаточно параметров");
+        return;
+    }
+
+    $this->arParams["WORKERS_HL_BLOCK_ID"] = intval($this->arParams["WORKERS_HL_BLOCK_ID"]);
+    $this->arParams["UNANSWERED_CALLS_HL_BLOCK_ID"] = intval($this->arParams["UNANSWERED_CALLS_HL_BLOCK_ID"]);
+
     global $USER;
     if(!$USER->IsAuthorized()) return;
     $user_id=$USER->GetID();
     $this->arResult["USER"] = DbInteraction::getUser($user_id);
+
+    if(!$this->arResult["USER"]) {
+      throw New Exception("user not found");
+    }
+
     if($this->startResultCache(false, array($this->arResult["USER"]["LOGIN"], $_GET)))
     {
       $arWorkerNumbers = $this->GetWorkers($this->arResult, $this->arResult["USER"]["LOGIN"]);

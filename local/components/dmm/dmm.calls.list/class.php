@@ -7,16 +7,15 @@
  * @copyright 2018 ООО DMM
  */
 
-\Bitrix\Main\Loader::includeModule('kostya14.custom');
 use \Kostya14\Custom\DbInteraction;
 use \Kostya14\Custom\ExternalApi;
 use \Kostya14\Custom\Filter;
+use \Bitrix\Main\Context;
 
 class classCallsListB extends CBitrixComponent
 {
-  const NAV_NAME = 'nav-calls'; //Имя $_GET параметра постраничной навигации
-  const PAGE_SIZE = 7;
-  /**
+
+    /**
   * Добавляет к фильтру звонков его направление, если задан $direct
   *
   * @param array $filter массив фильтров
@@ -62,7 +61,7 @@ class classCallsListB extends CBitrixComponent
   * @return array $arWorkerNumbers массив номеров сотрудников
   */
   function GetWorkers(&$arResult, $user_login) {
-    $entity_data_class = DbInteraction::GetEntityDataClass(WORKERS_HL_BLOCK_ID);
+    $entity_data_class = DbInteraction::GetEntityDataClass($this->arParams["WORKERS_HL_BLOCK_ID"]);
     $rsData = $entity_data_class::getList(array(
        'select' => array('ID', 'UF_PHONE_NUMBER', 'UF_FIRST_NAME', 'UF_LAST_NAME',),
        'filter' => array('UF_USER_PHONE_NUMBER'=>$user_login),
@@ -79,7 +78,7 @@ class classCallsListB extends CBitrixComponent
       };
     };
     if(count($arWorkerNumbers)==0)
-      $arWorkerNumbers = 0;
+      $arWorkerNumbers = false;
     return $arWorkerNumbers;
   }
   /**
@@ -90,10 +89,13 @@ class classCallsListB extends CBitrixComponent
   * @param array $arWorkerNumbers массив номеров сотрудников
   */
   function GetCalls(&$arResult, $arWorkerNumbers) {
-    $entity_data_class = DbInteraction::GetEntityDataClass(CALLS_HL_BLOCK_ID);
+    $entity_data_class = DbInteraction::GetEntityDataClass($this->arParams["CALLS_HL_BLOCK_ID"]);
+
+    $context = Context::getCurrent();
+    $request = $context->getRequest();
 
     //Проверка фильтров
-    Filter::CheckWorkers($arWorkerNumbers, $_GET, self::NAV_NAME);
+    Filter::CheckWorkers($arWorkerNumbers, $request->getQueryList(), $this->arParams["NAV_NAME"]);
     $filter = array(
         array(
             "LOGIC"=>"AND",
@@ -102,15 +104,16 @@ class classCallsListB extends CBitrixComponent
         ),
         ">UF_CALL_CREATE_DATE"=>date("d.m.Y H:i:s", time()-(86400*370))
     );
-    $this->CheckDirection($filter, $_GET["direction"]);
-    $this->CheckAnswer($filter, $_GET["is_answered"]);
-    Filter::CheckData($filter, $_GET["date_from"], $_GET["date_to"]);
-    $this->CheckClient($filter, $_GET["client_number"]);
+
+    $this->CheckDirection($filter, $request->getQuery("direction"));
+    $this->CheckAnswer($filter, $request->getQuery("is_answered"));
+    Filter::CheckData($filter, $request->getQuery("date_from"), $request->getQuery("date_to"));
+    $this->CheckClient($filter, $request->getQuery("client_number"));
     
     //Задаём постраничную навигацию
-    $nav = new \Bitrix\Main\UI\PageNavigation(self::NAV_NAME);
+    $nav = new \Bitrix\Main\UI\PageNavigation($this->arParams["NAV_NAME"]);
     $nav->allowAllRecords(true)
-        ->setPageSize(self::PAGE_SIZE)
+        ->setPageSize($this->arParams["PAGE_SIZE"])
         ->initFromUri();
 
     //Получаем список звонков с заданным фильтром
@@ -158,20 +161,51 @@ class classCallsListB extends CBitrixComponent
             $el["UF_EXT_TRACKING_ID"],
             $el["UF_ABONENT_NUMBER"]."@mpbx.sip.beeline.ru",
             $arResult["USER"]["UF_TOKEN"],
-            RECORD_WAITING_TIME
+            0
         );
     }
   }
+  /**
+   * @throws Exception юзер не найден
+   * @throws \Bitrix\Main\LoaderException Модуль kostya14.custom не установлен
+   */
   public function executeComponent() {
+    if (!\Bitrix\Main\Loader::includeModule('kostya14.custom')) {
+        throw new \Bitrix\Main\LoaderException("Модуль kostya14.custom не установлен");
+    }
+
+    if(
+        !$this->arParams["WORKERS_HL_BLOCK_ID"]
+        || !$this->arParams["CALLS_HL_BLOCK_ID"]
+        || !$this->arParams["NAV_NAME"]
+        || !$this->arParams["PAGE_SIZE"]
+    )
+    {
+        ShowError("Недостаточно параметров");
+        return;
+    }
+
+    $this->arParams["WORKERS_HL_BLOCK_ID"] = intval($this->arParams["WORKERS_HL_BLOCK_ID"]);
+    $this->arParams["CALLS_HL_BLOCK_ID"] = intval($this->arParams["CALLS_HL_BLOCK_ID"]);
+    $this->arParams["NAV_NAME"] = strval($this->arParams["NAV_NAME"]);
+    $this->arParams["PAGE_SIZE"] = intval($this->arParams["PAGE_SIZE"]);
+
+
     global $USER;
     if(!$USER->IsAuthorized()) return;
     $user_id=$USER->GetID();
     $this->arResult["USER"] = DbInteraction::getUser($user_id);
+
+    if(!$this->arResult["USER"]) {
+        throw New Exception("user not found");
+    }
+
     if($this->startResultCache(false, array($this->arResult["USER"]["LOGIN"], $_GET)))
     {
       $arWorkerNumbers = $this->GetWorkers($this->arResult, $this->arResult["USER"]["LOGIN"]);
-      $this->GetCalls($this->arResult, $arWorkerNumbers);
-      $this->GetDownloadLink($this->arResult);
+      if($arWorkerNumbers) {
+          $this->GetCalls($this->arResult, $arWorkerNumbers);
+      }
       $this->includeComponentTemplate();
     };
   }
